@@ -1,0 +1,92 @@
+graph LR
+    subgraph "云下 (On-Premises: 自建K8s on VMware)"
+        subgraph "开发环境"
+            Dev[开发者] --> Git[Git Repo]
+            Git --> Jenkins[Jenkins CI/CD]
+        end
+        
+        subgraph "K8s集群 (VMware)"
+            VMNodes[VMware Nodes<br/>Cilium Agent]
+            VMNodes --> CiliumVM[Cilium CNI<br/>eBPF Data Plane]
+            CiliumVM --> ClusterMesh["ClusterMesh<br/>KVStore (etcd)"]
+            VMNodes --> OPA_VM[OPA Gatekeeper<br/>Policy Engine]
+            VMNodes --> Trivy_VM[Trivy Agent<br/>Image Scan]
+        end
+        
+        subgraph "存储 & 监控"
+            VMware_Storage[VMware Storage]
+            VMware_Storage --> PVC_VM[PV/PVC]
+            Prometheus_VM[Prometheus<br/>Metrics]
+            Loki_VM[Loki<br/>Logs]
+        end
+        
+        Jenkins -->|Helm Install| Helm_VM[Helm Charts<br/>Deployment]
+        Helm_VM --> VMNodes
+        Trivy_VM -->|Scan & Block| Jenkins
+    end
+    
+    subgraph "网络连接 (Cross-IDC)"
+        VPC_Peering[VPC Peering / SD-WAN<br/>物理网络连接]
+        ClusterMesh -->|状态同步| Global_Policies[Global Network Policies<br/>OPA Rego Rules]
+        Global_Policies --> Cilium_Global[Cilium ClusterMesh<br/>跨集群路由]
+    end
+    
+    subgraph "云上 (Huawei Cloud CCE)"
+        subgraph "K8s集群 (CCE)"
+            CCENodes[CCE Nodes<br/>Cilium Agent]
+            CCENodes --> Cilium_CCE[Cilium CNI<br/>VPC-CNI Optimized]
+            Cilium_CCE --> ClusterMesh
+            CCENodes --> OPA_CCE[OPA Gatekeeper<br/>Policy Engine]
+            CCENodes --> Trivy_CCE[Trivy Agent<br/>Image Scan]
+        end
+        
+        subgraph "华为云服务"
+            Huawei_Registry[华为云镜像仓库<br/>Harbor]
+            Huawei_Registry --> Trivy_CCE
+            Huawei_Monitor[华为云监控<br/>APM/Logs]
+            Huawei_Monitor --> Prometheus_CCE[Prometheus<br/>Metrics]
+            Huawei_Monitor --> Jaeger_CCE[Jaeger<br/>Tracing]
+        end
+        
+        subgraph "应用部署"
+            Deploy_CCE[应用Pod<br/>跨IDC调度]
+            Deploy_CCE --> CCENodes
+            Deploy_CCE --> Service_CCE[Service/Ingress<br/>华为云LB]
+        end
+        
+        Helm_CCE[Helm Charts<br/>Deployment] --> CCENodes
+        ArgoCD[ArgoCD<br/>GitOps] --> Helm_CCE
+    end
+    
+    subgraph "全局组件"
+        GitOps["GitOps (ArgoCD/Flux)<br/>策略 & 配置同步"]
+        GitOps --> OPA_Global[OPA Global Policies]
+        OPA_Global --> Global_Policies
+        
+        Security_Scan[Trivy Registry Scan<br/>定期漏洞扫描]
+        Security_Scan --> Huawei_Registry
+        Security_Scan --> VMware_Storage
+        
+        Hubble[Hubble<br/>网络观测 & 可视化]
+        Hubble --> Cilium_Global
+    end
+    
+    subgraph "数据流"
+        Dev -->|代码推送| Git
+        Git -->|触发| Jenkins
+        Jenkins -->|镜像构建| Huawei_Registry
+        Huawei_Registry -->|安全扫描| Trivy_VM
+        Trivy_VM -->|通过/拦截| Jenkins
+        Jenkins -->|Helm部署| Helm_VM
+        Helm_VM -->|跨IDC| Deploy_CCE
+        Deploy_CCE -->|流量| Service_CCE
+        Service_CCE -->|监控| Huawei_Monitor
+    end
+    
+    subgraph "安全 & 合规"
+        OPA_Global -->|准入控制| VMNodes
+        OPA_Global -->|准入控制| CCENodes
+        Hubble -->|异常检测| Prometheus_VM
+        Hubble -->|异常检测| Prometheus_CCE
+        Security_Scan -->|报告| Compliance["Compliance"]
+    end
