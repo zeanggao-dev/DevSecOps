@@ -1,0 +1,18 @@
+flowchart TD
+    A[外部请求<br/>www.test.com/shoppingmall] --> B[云ELB / LoadBalancer<br/>可选：单独创建云LB]
+    B --> C[Ingress Controller Service<br/>通常 LoadBalancer 或 NodePort]
+    C --> D[Ingress Controller Pod<br/>nginx-ingress / Traefik Pod]
+    D --> E[Ingress 规则<br/>域名/路径映射到 Service]
+    E --> F[Service<br/>ClusterIP / LoadBalancer]
+    F --> G[Pod 副本集<br/>Deployment 管理]
+    G --> H[Container<br/>运行镜像]
+    
+    subgraph "Kubernetes 集群"
+        C
+        D
+        E
+        F
+        G
+        H
+    end
+  

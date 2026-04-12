@@ -487,3 +487,32 @@ Phase 4（卓越期，第6-12月）：
 | **解释** | 无自带工具，用kube-bench等生成。SOC2是安全审计标准；银行SOX中常作为证据，非严格必选。 |
 | **解决方案** | 每月生成报告；员工提供证据，管理者定义控制。 |
 | **技术** | 脚本自动化；SOC2覆盖5个准则，需审计师协助。 |
+
+### 19. 关于Service(NodePort)和Ingress
+
+| 类别 | 内容 |
+|------|------|
+| **深度思考** | Service(NodePort)直接暴露每个Pod背后的端口，类似给每个店铺开独立门，管理成本高。Ingress是集群前端的统一路由入口，类似大商场的总门口。它可以做主机/路径路由、TLS终止和基本转发，但不等同于完整API Gateway。Ingress 本身不直接依赖 Service，但标准 Kubernetes 模型中，它几乎总是通过 Service 指向后端 Pod。 |
+| **解释** | Service(NodePort)会在每个节点上开放一个高端口，适合简单测试或无云LB环境；Ingress通过Ingress Controller（如nginx-ingress、Traefik）实现域名/路径路由、TLS终止、重定向等。Ingress Controller 是实际的流量代理，Ingress 是规则定义。API Gateway则在此基础上进一步提供认证、限流、监控、请求转化、灰度发布等功能。 |
+| **解决方案** | 开发环境可用NodePort快速验证；生产环境推荐部署Ingress Controller（如nginx/Traefik）作为统一入口；若需要API级别治理，可在Ingress前端增加专用API Gateway或使用支持插件的Ingress Controller。Ingress 与 Service 的关系：Ingress 定义路由规则，Service 提供稳定的后端访问，Pod 运行容器。 |
+| **技术** | NodePort属于K8s Service类型之一；Ingress需要Ingress Controller，通常结合LoadBalancer或外部代理；API Gateway是更高层的L7服务网关，常见实现有Kong、APISIX、Istio Gateway等。Ingress 不是 nginx，而是 Ingress Controller 可以是 nginx |
+
+### 20. 关于Ingress Controller与LoadBalancer
+
+| 类别 | 内容 |
+|------|------|
+| **深度思考** | Ingress Controller是实际接收外部流量的组件，它通常以一组Pod运行，并通过Service暴露给外部。LoadBalancer Service只是其中一种暴露方式，但它是生产环境中最常见的模式。 |
+| **解释** | Ingress Controller本身不是一个Service类型，而是一组Pod；它通常绑定到一个LoadBalancer类型的Service，从而在云环境中获得外部IP或云LB。NodePort也可以用，但不常用。 |
+| **解决方案** | 生产环境优先使用LoadBalancer Service暴露Ingress Controller；无云环境可以使用NodePort配合外部代理；如果需要单独云ELB，可让ELB指向Ingress Controller的Service。 |
+| **技术** | LoadBalancer Service在云平台上会自动创建云LB，并提供外部IP；Ingress Controller接收请求后，根据Ingress规则转发到后端Service。 |
+
+### 21. 关于Deployment与Service的关系
+
+| 类别 | 内容 |
+|------|------|
+| **深度思考** | Deployment和Service是两个不同层次的控制器，前者管理Pod生命周期，后者提供访问抽象。它们通过标签选择器（selector）间接关联，但不直接互相控制。 |
+| **解释** | Deployment定义Pod副本、更新策略和滚动发布；Service定义如何访问这些Pod。Deployment创造并维护Pod，Service匹配Pod标签并负载均衡流量。 |
+| **解决方案** | 使用Deployment管理应用Pod数量和版本；使用Service暴露Pod并提供稳定访问；如果需要将多个Deployment组合为一个入口，可在Service之外再加Ingress。 |
+| **技术** | Service可以选择ClusterIP、NodePort、LoadBalancer等类型；Deployment可以与Service、Ingress、HPA等配合，但本质上它只负责Pod。 |
+
+![alt text](image-2.png)
