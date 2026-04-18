@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cyber Range Dashboard</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body onload="loadDashboard()">
+  <div class="shell">
+    <div class="topbar">
+      <div class="brand">Cyber Range Control Plane</div>
+      <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/dashboard.html" class="active">Dashboard</a>
+        <a href="/attacks.html">Attack Console</a>
+        <a href="/controls.html">Security Controls</a>
+        <a href="/events.html">Events</a>
+      </div>
+    </div>
+
+    <div class="hero">
+      <h1>Operational Security View</h1>
+      <p>Monitor blocking and detection status while running attacker-vm simulation requests.</p>
+    </div>
+
+    <div class="grid">
+      <div class="card"><div class="label">Service</div><div class="kpi" id="serviceState">-</div></div>
+      <div class="card"><div class="label">Total Tests</div><div class="kpi" id="kpiTests">0</div></div>
+      <div class="card"><div class="label">Blocked</div><div class="kpi" id="kpiBlocked">0</div></div>
+      <div class="card"><div class="label">Detected</div><div class="kpi" id="kpiDetected">0</div></div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h3>Recent Events</h3>
+      <pre id="eventsFeed">Loading...</pre>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

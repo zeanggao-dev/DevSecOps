@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cyber Range Event Timeline</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body onload="loadEvents()">
+  <div class="shell">
+    <div class="topbar">
+      <div class="brand">Cyber Range Control Plane</div>
+      <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/attacks.html">Attack Console</a>
+        <a href="/controls.html">Security Controls</a>
+        <a href="/events.html" class="active">Events</a>
+      </div>
+    </div>
+
+    <div class="hero">
+      <h1>Detection and Blocking Timeline</h1>
+      <p>Audit attack attempts from attacker VM and control updates from defender VM.</p>
+    </div>
+
+    <div class="card">
+      <div style="display:flex; gap:8px; margin-bottom:10px;">
+        <button onclick="loadEvents()">Refresh</button>
+      </div>
+      <pre id="eventsOutput">Loading...</pre>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

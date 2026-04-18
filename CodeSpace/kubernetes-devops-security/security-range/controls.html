@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cyber Range Security Controls</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body onload="loadControlTable()">
+  <div class="shell">
+    <div class="topbar">
+      <div class="brand">Cyber Range Control Plane</div>
+      <div class="nav">
+        <a href="/index.html">Home</a>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/attacks.html">Attack Console</a>
+        <a href="/controls.html" class="active">Security Controls</a>
+        <a href="/events.html">Events</a>
+      </div>
+    </div>
+
+    <div class="hero">
+      <h1>Defender Control Manager</h1>
+      <p>Switch controls between enforce, detect, and disabled to demonstrate policy impact.</p>
+    </div>
+
+    <div class="card">
+      <table style="width:100%; border-collapse: collapse;">
+        <thead>
+          <tr>
+            <th style="text-align:left; border-bottom:1px solid #d7dde2; padding:8px;">Control</th>
+            <th style="text-align:left; border-bottom:1px solid #d7dde2; padding:8px;">Enabled</th>
+            <th style="text-align:left; border-bottom:1px solid #d7dde2; padding:8px;">Current Mode</th>
+            <th style="text-align:left; border-bottom:1px solid #d7dde2; padding:8px;">New Mode</th>
+            <th style="text-align:left; border-bottom:1px solid #d7dde2; padding:8px;">Action</th>
+          </tr>
+        </thead>
+        <tbody id="controlRows"></tbody>
+      </table>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h3>Update Result</h3>
+      <pre id="controlOutput">{}</pre>
+    </div>
+  </div>
+
+  <script src="/app.js"></script>
+</body>
+</html>

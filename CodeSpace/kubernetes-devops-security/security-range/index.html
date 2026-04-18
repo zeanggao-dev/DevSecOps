@@ -1,0 +1,58 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cyber Range Home</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <div class="shell">
+    <div class="topbar">
+      <div class="brand">Cyber Range Control Plane</div>
+      <div class="nav">
+        <a href="/index.html" class="active">Home</a>
+        <a href="/dashboard.html">Dashboard</a>
+        <a href="/attacks.html">Attack Console</a>
+        <a href="/controls.html">Security Controls</a>
+        <a href="/events.html">Events</a>
+      </div>
+    </div>
+
+    <div class="hero">
+      <h1>Enterprise Security Validation Lab</h1>
+      <p>Use one VM as defender and another VM as attacker simulator to test firewall, ACL, WAF, IPS, anti-virus, and host security policies with instant feedback.</p>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="label">Step 1</div>
+        <h3>Open Dashboard</h3>
+        <p>Track blocked and detected counters with recent events.</p>
+        <a href="/dashboard.html"><button>Go to Dashboard</button></a>
+      </div>
+      <div class="card">
+        <div class="label">Step 2</div>
+        <h3>Run Attack Probes</h3>
+        <p>Send SQLi and traversal requests and inspect true blocked versus allowed behavior.</p>
+        <a href="/attacks.html"><button class="warn">Go to Attack Console</button></a>
+      </div>
+      <div class="card">
+        <div class="label">Step 3</div>
+        <h3>Enable Controls</h3>
+        <p>Move IPS, firewall, and WAF between detect and enforce to prove policy impact.</p>
+        <a href="/controls.html"><button class="secondary">Go to Controls</button></a>
+      </div>
+    </div>
+
+    <div class="card" style="margin-top:14px;">
+      <h3>Quick API Checks</h3>
+      <pre>GET /api/health
+GET /api/report
+GET /demo/search?q=' OR 1=1 -- SQLI_TEST_TOKEN
+GET /demo/file?path=../../../../etc/passwd</pre>
+      <div class="small" style="margin-top:10px;">All payload execution is simulation-only for authorized PoC environments.</div>
+    </div>
+  </div>
+</body>
+</html>

