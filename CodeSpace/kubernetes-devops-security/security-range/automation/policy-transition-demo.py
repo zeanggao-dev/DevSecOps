@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Compare baseline versus hardened policy posture for customer PoC."""
 
-from __future__ import annotations
-
 import argparse
 import json
 from urllib.error import HTTPError

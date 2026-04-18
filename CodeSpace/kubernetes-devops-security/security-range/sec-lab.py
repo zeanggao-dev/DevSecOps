@@ -8,8 +8,6 @@ This service intentionally provides defensive simulation only:
 - It evaluates whether configured controls would detect or block test signals.
 """
 
-from __future__ import annotations
-
 import argparse
 import base64
 import hashlib
@@ -18,7 +16,6 @@ import mimetypes
 import sqlite3
 import threading
 import time
-from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -118,15 +115,35 @@ _SIMULATED_SSRF: Dict[str, str] = {
 
 
 
-@dataclass
 class TestCase:
-	id: str
-	name: str
-	severity: str
-	expected_block: bool
-	vector: str
-	indicators: List[str]
-	controls: List[str]
+	def __init__(
+		self,
+		id: str,
+		name: str,
+		severity: str,
+		expected_block: bool,
+		vector: str,
+		indicators: List[str],
+		controls: List[str],
+	) -> None:
+		self.id = id
+		self.name = name
+		self.severity = severity
+		self.expected_block = expected_block
+		self.vector = vector
+		self.indicators = indicators
+		self.controls = controls
+
+	def to_dict(self) -> Dict[str, Any]:
+		return {
+			"id": self.id,
+			"name": self.name,
+			"severity": self.severity,
+			"expected_block": self.expected_block,
+			"vector": self.vector,
+			"indicators": self.indicators,
+			"controls": self.controls,
+		}
 
 
 class CyberRangeStore:
@@ -166,14 +183,17 @@ class CyberRangeStore:
 	def ensure_default_controls(self, defaults: Dict[str, Dict[str, Any]]) -> None:
 		with self._lock, self._connect() as conn:
 			for name, state in defaults.items():
-				conn.execute(
-					"""
-					INSERT INTO control_state(control_name, enabled, mode)
-					VALUES(?, ?, ?)
-					ON CONFLICT(control_name) DO NOTHING
-					""",
-					(name, int(state["enabled"]), state["mode"]),
-				)
+				try:
+					conn.execute(
+						"""
+						INSERT INTO control_state(control_name, enabled, mode)
+						VALUES(?, ?, ?)
+						""",
+						(name, int(state["enabled"]), state["mode"]),
+					)
+				except sqlite3.IntegrityError:
+					# Control already exists; keep current persisted value.
+					pass
 
 	def get_controls(self) -> Dict[str, Dict[str, Any]]:
 		with self._lock, self._connect() as conn:
@@ -377,7 +397,7 @@ class CyberRangeEngine:
 		for test in tests:
 			eval_result = self._evaluate_controls(test.controls, test.expected_block)
 			entry = {
-				**asdict(test),
+				**test.to_dict(),
 				"result": eval_result,
 				"status": "pass" if ((test.expected_block and eval_result["decision"] == "blocked") or (not test.expected_block)) else "review",
 			}

@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Run repeated batches for stability and trend demonstrations."""
 
-from __future__ import annotations
-
 import argparse
 import json
 import time

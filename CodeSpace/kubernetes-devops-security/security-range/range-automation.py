@@ -5,24 +5,21 @@ Automation runner for the defensive cyber range.
 Runs baseline suites, WAF/ACL checks, and file-scan checks to produce a concise report.
 """
 
-from __future__ import annotations
-
 import argparse
 import base64
 import json
 import sys
 import time
-from dataclasses import dataclass
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-@dataclass
 class StepResult:
-    name: str
-    ok: bool
-    details: Dict[str, Any]
+    def __init__(self, name: str, ok: bool, details: Dict[str, Any]) -> None:
+        self.name = name
+        self.ok = ok
+        self.details = details
 
 
 class RangeClient:
@@ -30,7 +27,7 @@ class RangeClient:
         self.base_url = base_url.rstrip("/")
         self.timeout = timeout
 
-    def _request(self, method: str, path: str, payload: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    def _request(self, method: str, path: str, payload: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
         data = None
         headers = {"Accept": "application/json"}
         if payload is not None:

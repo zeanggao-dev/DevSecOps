@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Run a broad, safe attack simulation matrix against the cyber range service."""
 
-from __future__ import annotations
-
 import argparse
 import base64
 import csv
