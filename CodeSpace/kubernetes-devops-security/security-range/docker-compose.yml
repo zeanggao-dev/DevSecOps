@@ -1,0 +1,13 @@
+services:
+  cyber-range:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cyber-range
+    ports:
+      - "8080:8080"
+    environment:
+      - CYBER_RANGE_DB_PATH=/app/data/cyber_range.db
+    volumes:
+      - ./data:/app/data
+    restart: unless-stopped

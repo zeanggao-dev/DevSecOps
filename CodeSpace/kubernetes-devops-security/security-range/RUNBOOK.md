@@ -4,7 +4,8 @@
 This cyber range is defensive simulation for validating cloud firewall, WAF, ACL, IPS, anti-virus, and host security controls.
 
 ## Requirements
-- Python 3.8+
+- Docker or Docker Compose (recommended for low-version Python VMs)
+- Python 3.6+ for direct host execution (optional)
 - No external Python dependencies
 - One low-resource VM can run service and UI
 - Optional second VM can act as attacker simulator
@@ -22,6 +23,25 @@ This cyber range is defensive simulation for validating cloud firewall, WAF, ACL
 - automation/continuous-batch.py: Repeated stability batches
 
 ## 1) Start Cyber Range Service (Defender VM)
+Container deployment (recommended):
+```bash
+cd ~/CodeSpace/kubernetes-devops-security/security-range
+docker compose up -d --build
+# if your VM uses legacy compose binary:
+# docker-compose up -d --build
+```
+
+Or plain Docker:
+```bash
+cd ~/CodeSpace/kubernetes-devops-security/security-range
+docker build -t cyber-range:latest .
+docker run -d --name cyber-range -p 8080:8080 \
+  -e CYBER_RANGE_DB_PATH=/app/data/cyber_range.db \
+  -v $(pwd)/data:/app/data \
+  cyber-range:latest
+```
+
+Host Python deployment (optional):
 ```bash
 cd ~/CodeSpace/kubernetes-devops-security/security-range
 python3 sec-lab.py --host 0.0.0.0 --port 8080

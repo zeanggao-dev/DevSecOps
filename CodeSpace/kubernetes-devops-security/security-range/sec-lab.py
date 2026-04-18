@@ -13,6 +13,7 @@ import base64
 import hashlib
 import json
 import mimetypes
+import os
 import sqlite3
 import threading
 import time
@@ -26,7 +27,7 @@ from urllib.parse import parse_qs, urlparse, unquote
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DB_PATH = BASE_DIR / "cyber_range.db"
+DB_PATH = Path(os.getenv("CYBER_RANGE_DB_PATH", str(BASE_DIR / "cyber_range.db")))
 INDEX_FILE = BASE_DIR / "index.html"
 STATIC_ROOT = BASE_DIR
 
@@ -154,6 +155,7 @@ class TestCase:
 class CyberRangeStore:
 	def __init__(self, db_path: Path) -> None:
 		self.db_path = db_path
+		self.db_path.parent.mkdir(parents=True, exist_ok=True)
 		self._lock = threading.Lock()
 		self._init_db()
 
