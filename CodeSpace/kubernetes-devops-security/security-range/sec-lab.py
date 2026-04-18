@@ -18,8 +18,9 @@ import threading
 import time
 from datetime import datetime, timezone
 from http import HTTPStatus
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from socketserver import ThreadingMixIn
 from typing import Dict, List, Any
 from urllib.parse import parse_qs, urlparse, unquote
 
@@ -112,6 +113,10 @@ _SIMULATED_SSRF: Dict[str, str] = {
     ),
     "http://10.0.2.50:8500/v1/kv/": '["config/db_password","config/jwt_secret","config/api_key"]',
 }
+
+
+class ThreadingHTTPServer(ThreadingMixIn, HTTPServer):
+	daemon_threads = True
 
 
 
