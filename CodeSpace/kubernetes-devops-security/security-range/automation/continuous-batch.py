@@ -32,7 +32,7 @@ def main():
     for i in range(1, args.iterations + 1):
         row = {"iteration": i, "suites": []}
         for s in suites:
-            data = post(args.target, "/api/execute", {"test_type": s, "source_vm": f"attacker-vm-{i}"})
+            data = post(args.target, "/api/execute", {"test_type": s, "source_vm": "attacker-vm-{}".format(i)})
             row["suites"].append({
                 "suite": s,
                 "blocked": data.get("data", {}).get("blocked", 0),
@@ -46,7 +46,7 @@ def main():
         json.dump({"iterations": args.iterations, "history": history}, f, indent=2)
 
     print("Continuous batch complete")
-    print(f"Output: {args.output}")
+    print("Output: {}".format(args.output))
 
 
 if __name__ == "__main__":

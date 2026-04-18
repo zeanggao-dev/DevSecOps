@@ -85,7 +85,7 @@ def run_matrix(base: str, source_vm: str):
     ]
     for user, pw in auth_cases:
         code, data = call(base, "POST", "/vuln/auth", {"username": user, "password": pw, "source_vm": source_vm})
-        rows.append({"category": "auth", "payload": f"{user}:{pw}", "http": code, "blocked": blocked_by_external(code), "data": data})
+        rows.append({"category": "auth", "payload": "{}:{}".format(user, pw), "http": code, "blocked": blocked_by_external(code), "data": data})
 
     # ── SSRF ──────────────────────────────────────────────────────────────────
     ssrf_targets = [
@@ -149,9 +149,9 @@ def main():
     write_csv(args.csv_output, rows)
 
     print("Matrix complete")
-    print(f"Total: {summary['total']}, Blocked: {summary['blocked']}, Allowed: {summary['allowed']}")
-    print(f"JSON: {args.json_output}")
-    print(f"CSV: {args.csv_output}")
+    print("Total: {}, Blocked: {}, Allowed: {}".format(summary["total"], summary["blocked"], summary["allowed"]))
+    print("JSON: {}".format(args.json_output))
+    print("CSV: {}".format(args.csv_output))
 
 
 if __name__ == "__main__":

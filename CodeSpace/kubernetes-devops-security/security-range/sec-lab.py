@@ -31,7 +31,7 @@ INDEX_FILE = BASE_DIR / "index.html"
 STATIC_ROOT = BASE_DIR
 
 # Explicit MIME map so CentOS minimal (no /etc/mime.types) still works correctly.
-_MIME_MAP: Dict[str, str] = {
+_MIME_MAP = {
     ".html": "text/html; charset=utf-8",
     ".htm": "text/html; charset=utf-8",
     ".css": "text/css",
@@ -52,7 +52,7 @@ _SIMULATED_DB = [
     {"id": 4, "username": "operator",  "password_hash": "827ccb0eea8a706c4c34a16891f84e7b", "role": "operator",        "email": "operator@corp.local",  "api_key": "aks-ops-f0e1d2c3b4"},
 ]
 
-_SIMULATED_FILES: Dict[str, str] = {
+_SIMULATED_FILES = {
     "/etc/passwd": (
         "root:x:0:0:root:/root:/bin/bash\n"
         "daemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\n"
@@ -76,7 +76,7 @@ _SIMULATED_FILES: Dict[str, str] = {
     ),
 }
 
-_SIMULATED_CMD: Dict[str, str] = {
+_SIMULATED_CMD = {
     "id":        "uid=0(root) gid=0(root) groups=0(root)",
     "whoami":    "root",
     "hostname":  "app-server-prod-01",
@@ -101,7 +101,7 @@ _SIMULATED_CMD: Dict[str, str] = {
     ),
 }
 
-_SIMULATED_SSRF: Dict[str, str] = {
+_SIMULATED_SSRF = {
     "http://169.254.169.254/latest/meta-data/": (
         "ami-id\nami-launch-index\nhostname\ninstance-id\n"
         "local-ipv4\npublic-ipv4\niam/security-credentials/"
@@ -239,7 +239,7 @@ class CyberRangeStore:
 				"SELECT ts, event_type, source_vm, details_json FROM events ORDER BY id DESC LIMIT ?",
 				(limit,),
 			).fetchall()
-		out: List[Dict[str, Any]] = []
+		out = []
 		for row in rows:
 			out.append(
 				{
@@ -397,7 +397,7 @@ class CyberRangeEngine:
 
 	def execute_suite(self, suite_name: str, source_vm: str = "attacker-vm", log_events: bool = True) -> Dict[str, Any]:
 		tests = self.test_suites.get(suite_name, [])
-		result_tests: List[Dict[str, Any]] = []
+		result_tests = []
 
 		for test in tests:
 			eval_result = self._evaluate_controls(test.controls, test.expected_block)
@@ -469,7 +469,7 @@ class CyberRangeEngine:
 		path = str(payload.get("path", "/"))
 		query = str(payload.get("query", ""))
 		body = str(payload.get("body", ""))
-		merged = f"{path} {query} {body}".lower()
+		merged = "{} {} {}".format(path, query, body).lower()
 
 		indicators = []
 		if "sqli_test_token" in merged or "' or 1=1" in merged:
@@ -559,7 +559,7 @@ class CyberRangeEngine:
 			"requested": file_path,
 			"resolved": norm,
 			"found": content is not None,
-			"content": content if content is not None else f"{norm}: No such file or directory",
+			"content": content if content is not None else "{}: No such file or directory".format(norm),
 		}
 
 	def vuln_exec(self, cmd: str, source_vm: str) -> Dict[str, Any]:
@@ -569,7 +569,7 @@ class CyberRangeEngine:
 			"endpoint": "/vuln/exec",
 			"command": cmd,
 			"exit_code": 0,
-			"stdout": _SIMULATED_CMD.get(clean, f"bash: {clean}: command not found"),
+			"stdout": _SIMULATED_CMD.get(clean, "bash: {}: command not found".format(clean)),
 			"stderr": "",
 		}
 
@@ -602,7 +602,7 @@ class CyberRangeEngine:
 
 	def vuln_ssrf(self, url: str, source_vm: str) -> Dict[str, Any]:
 		self.store.log_event("vuln_ssrf", {"url": url}, source_vm=source_vm)
-		body = _SIMULATED_SSRF.get(url.rstrip("/"), f"Connected to {url} — 200 OK")
+		body = _SIMULATED_SSRF.get(url.rstrip("/"), "Connected to {} - 200 OK".format(url))
 		return {
 			"endpoint": "/vuln/ssrf",
 			"target_url": url,
@@ -622,8 +622,8 @@ class CyberRangeEngine:
 			"filename": filename,
 			"sha256": sha256,
 			"size_bytes": len(raw),
-			"stored_path": f"/var/www/html/uploads/{filename}",
-			"accessible_url": f"/uploads/{filename}",
+			"stored_path": "/var/www/html/uploads/{}".format(filename),
+			"accessible_url": "/uploads/{}".format(filename),
 			"message": "File uploaded successfully. No AV scan performed.",
 		}
 
@@ -687,7 +687,7 @@ class CyberRangeHandler(BaseHTTPRequestHandler):
 
 	def log_message(self, fmt: str, *args: Any) -> None:
 		now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-		print(f"[{now}] {self.address_string()} - {fmt % args}")
+		print("[{}] {} - {}".format(now, self.address_string(), fmt % args))
 
 	def do_GET(self) -> None:
 		parsed = urlparse(self.path)
@@ -893,7 +893,7 @@ def main() -> None:
 			self.engine = engine
 
 	server = CyberRangeHTTPServer((args.host, args.port), CyberRangeHandler)
-	print(f"Cyber range listening on {args.host}:{args.port}")
+	print("Cyber range listening on {}:{}".format(args.host, args.port))
 	print("Use GET /api/health for health checks")
 	print("Use POST /api/execute with test_type in [layer3, layer4, layer7, owasp, malware]")
 

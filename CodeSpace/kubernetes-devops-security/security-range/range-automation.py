@@ -35,7 +35,7 @@ class RangeClient:
             headers["Content-Type"] = "application/json"
 
         req = Request(
-            url=f"{self.base_url}{path}",
+            url="{}{}".format(self.base_url, path),
             method=method,
             data=data,
             headers=headers,
@@ -46,9 +46,9 @@ class RangeClient:
                 return json.loads(body)
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="ignore")
-            raise RuntimeError(f"HTTP {exc.code} for {path}: {body}") from exc
+            raise RuntimeError("HTTP {} for {}: {}".format(exc.code, path, body)) from exc
         except URLError as exc:
-            raise RuntimeError(f"Connection error for {path}: {exc}") from exc
+            raise RuntimeError("Connection error for {}: {}".format(path, exc)) from exc
 
     def get_health(self) -> Dict[str, Any]:
         return self._request("GET", "/api/health")
@@ -107,7 +107,7 @@ class RangeClient:
 
 
 def run_full_demo(client: RangeClient, attacker_vm: str, defender_vm: str) -> Dict[str, Any]:
-    steps: List[StepResult] = []
+    steps = []
 
     health = client.get_health()
     steps.append(StepResult("Health check", health.get("status") == "ok", health))
@@ -115,7 +115,7 @@ def run_full_demo(client: RangeClient, attacker_vm: str, defender_vm: str) -> Di
     for suite in ["layer3", "layer4", "layer7", "owasp", "malware"]:
         data = client.execute_suite(suite, source_vm=attacker_vm)
         ok = bool(data.get("ok", False))
-        steps.append(StepResult(f"Suite {suite}", ok, data))
+        steps.append(StepResult("Suite {}".format(suite), ok, data))
 
     fw = client.evaluate_firewall(source_vm=attacker_vm)
     steps.append(StepResult("Firewall/ACL simulation", bool(fw.get("ok")), fw))
@@ -168,17 +168,18 @@ def main() -> int:
     try:
         report = run_full_demo(client, attacker_vm=args.attacker_vm, defender_vm=args.defender_vm)
     except Exception as exc:
-        print(f"Automation failed: {exc}")
+        print("Automation failed: {}".format(exc))
         return 1
 
     with open(args.output, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2)
 
     print("Automation completed")
-    print(f"Output report: {args.output}")
+    print("Output report: {}".format(args.output))
     print(
-        "Summary: "
-        f"{report['summary']['passed_steps']}/{report['summary']['total_steps']} steps passed"
+        "Summary: {}/{} steps passed".format(
+            report["summary"]["passed_steps"], report["summary"]["total_steps"]
+        )
     )
     return 0
 
