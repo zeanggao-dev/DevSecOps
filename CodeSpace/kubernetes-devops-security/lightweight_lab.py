@@ -617,15 +617,55 @@ function switchTab(name){
   if(name==='logs') loadLogs();
 }
 
+function parseJsonSafe(text){
+    try{ return JSON.parse(text); }catch(e){ return null; }
+}
+
+function bodyPreview(text){
+    if(!text) return '';
+    return String(text).replace(/\s+/g,' ').slice(0,220);
+}
+
+function renderApiResult(outId,xhr,jsonObj){
+    var lines=['HTTP '+xhr.status];
+    if(jsonObj && typeof jsonObj.ok==='boolean'){
+        lines.push('App '+(jsonObj.ok?'OK':'Blocked/Failed'));
+    }
+    if(!jsonObj){
+        var ct=(xhr.getResponseHeader('Content-Type')||'').toLowerCase();
+        if(xhr.status===0){
+            lines.push('Network error: request may be dropped/reset by NGFW/WAF or browser policy.');
+        }else if(ct.indexOf('application/json')===-1){
+            lines.push('Non-JSON response: possible interception/block page from upstream firewall.');
+        }else{
+            lines.push('Invalid JSON payload.');
+        }
+        var sn=bodyPreview(xhr.responseText);
+        if(sn) lines.push('Body Preview: '+sn);
+        show(outId,lines.join('\n'));
+        return;
+    }
+    show(outId,lines.join('\n')+'\n'+JSON.stringify(jsonObj,null,2));
+}
+
 function api(endpoint,outId,params){
   var qs=Object.keys(params).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(params[k]);}).join('&');
   var xhr=new XMLHttpRequest();
   xhr.open('GET','/api/'+endpoint+'?'+qs,true);
+    xhr.timeout=8000;
   xhr.onreadystatechange=function(){
     if(xhr.readyState!==4) return;
-    var d; try{ d=JSON.parse(xhr.responseText); }catch(e){ d={error:xhr.responseText}; }
-    show(outId,'HTTP '+xhr.status+'\\n'+JSON.stringify(d,null,2));
+        renderApiResult(outId,xhr,parseJsonSafe(xhr.responseText));
   };
+    xhr.onerror=function(){
+        show(outId,'HTTP 0\nNetwork error: request blocked/reset before app response.');
+    };
+    xhr.ontimeout=function(){
+        show(outId,'HTTP 0\nRequest timeout: upstream security device may have dropped this request.');
+    };
+    xhr.onabort=function(){
+        show(outId,'HTTP 0\nRequest aborted before completion.');
+    };
   xhr.send();
 }
 
@@ -653,17 +693,40 @@ function bruteForce(){
   var u=g('bf-u');
   var pws=g('bf-pw').split('\\n').map(function(p){ return p.trim(); }).filter(Boolean);
   var out='Brute forcing "'+u+'" with '+pws.length+' passwords...\\n';
-  var done=0;
+    var done=0,hits=0,blocked=0,errors=0;
+    if(!pws.length){ show('bf-out','No passwords provided.'); return; }
+
+    function finishOnce(){
+        if(done===pws.length){
+            out+='\\nSummary: hits='+hits+', blocked='+blocked+', errors='+errors+', total='+done;
+            show('bf-out',out);
+        }
+    }
+
   pws.forEach(function(pw){
     var xhr=new XMLHttpRequest();
+        var finalized=false;
+        function finalize(line,hit){
+            if(finalized) return;
+            finalized=true;
+            if(hit) hits++;
+            out+=line+'\\n';
+            done++;
+            finishOnce();
+        }
     xhr.open('GET','/api/sqli?username='+encodeURIComponent(u)+'&password='+encodeURIComponent(pw),true);
+        xhr.timeout=6000;
     xhr.onreadystatechange=function(){
       if(xhr.readyState!==4) return;
-      var d; try{ d=JSON.parse(xhr.responseText); }catch(e){ d={}; }
-      out+=(d.message&&d.message.indexOf('valid')>=0?'[HIT]  ':'[miss] ')+u+':'+pw+'\\n';
-      done++;
-      if(done===pws.length) show('bf-out',out);
+            var d=parseJsonSafe(xhr.responseText);
+            if(xhr.status===0){ blocked++; finalize('[blocked] '+u+':'+pw,false); return; }
+            if(!d){ errors++; finalize('[error] '+u+':'+pw+' (non-JSON / intercepted)',false); return; }
+            var ok=d.message&&d.message.indexOf('valid')>=0;
+            finalize((ok?'[HIT]  ':'[miss] ')+u+':'+pw,ok);
     };
+        xhr.onerror=function(){ blocked++; finalize('[blocked] '+u+':'+pw+' (network error)',false); };
+        xhr.ontimeout=function(){ blocked++; finalize('[timeout] '+u+':'+pw,false); };
+        xhr.onabort=function(){ blocked++; finalize('[aborted] '+u+':'+pw,false); };
     xhr.send();
   });
 }
@@ -671,17 +734,35 @@ function bruteForce(){
 function httpFlood(){
   var ep=g('flood-ep'); var n=parseInt(g('flood-n'),10)||10;
   var out='Sending '+n+' requests to '+ep+'...\\n';
-  var done=0,ok=0;
+    var done=0,ok=0,httpErr=0,netErr=0,timeouts=0;
   for(var i=0;i<n;i++){
     (function(){
       var xhr=new XMLHttpRequest();
+            var finalized=false;
+            function finalize(kind){
+                if(finalized) return;
+                finalized=true;
+                if(kind==='ok') ok++;
+                else if(kind==='timeout') timeouts++;
+                else if(kind==='net') netErr++;
+                else httpErr++;
+                done++;
+                if(done===n){
+                    out+='Completed: total='+done+', http200='+ok+', http_error='+httpErr+', network_error='+netErr+', timeout='+timeouts+'\\n';
+                    show('flood-out',out);
+                }
+            }
       xhr.open('GET',ep,true);
+            xhr.timeout=6000;
       xhr.onreadystatechange=function(){
         if(xhr.readyState!==4) return;
-        if(xhr.status===200) ok++;
-        done++;
-        if(done===n){ out+='Completed: '+ok+'/'+done+' got HTTP 200\\n'; show('flood-out',out); }
+                if(xhr.status===200) finalize('ok');
+                else if(xhr.status===0) finalize('net');
+                else finalize('http');
       };
+            xhr.onerror=function(){ finalize('net'); };
+            xhr.ontimeout=function(){ finalize('timeout'); };
+            xhr.onabort=function(){ finalize('net'); };
       xhr.send();
     })();
   }
@@ -695,11 +776,14 @@ function uploadFile(){
   fd.append('artifact',input.files[0],input.files[0].name+ext);
   var xhr=new XMLHttpRequest();
   xhr.open('POST','/api/upload',true);
+    xhr.timeout=12000;
   xhr.onreadystatechange=function(){
     if(xhr.readyState!==4) return;
-    var d; try{ d=JSON.parse(xhr.responseText); }catch(e){ d={error:xhr.responseText}; }
-    show('upl-out','HTTP '+xhr.status+'\\n'+JSON.stringify(d,null,2));
+        renderApiResult('upl-out',xhr,parseJsonSafe(xhr.responseText));
   };
+    xhr.onerror=function(){ show('upl-out','HTTP 0\\nNetwork error: upload blocked/reset before app response.'); };
+    xhr.ontimeout=function(){ show('upl-out','HTTP 0\\nUpload timeout: request may be blocked or dropped upstream.'); };
+    xhr.onabort=function(){ show('upl-out','HTTP 0\\nUpload aborted before completion.'); };
   xhr.send(fd);
 }
 
