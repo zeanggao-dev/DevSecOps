@@ -1,0 +1,7 @@
+database:
+  host: db.internal
+  user: lab_admin
+  password: LabOnlyPassword123
+redis:
+  host: cache.internal
+  password: redispass-fake
