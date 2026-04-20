@@ -52,10 +52,15 @@ XXE_FILES = {
     ),
 }
 
-EICAR_TEXT = (
-    "X5O!P%@AP[4\\PZX54(P^)7CC)7}"
-    "$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*"
-)
+EICAR_TEXT = "".join([
+    "X5O!P%@AP[4\\PZX54(P^)7CC)7",
+    chr(125),
+    chr(36),
+    "EICAR",
+    "-STANDARD-",
+    "ANTIVIRUS-",
+    "TEST-FILE!$H+H*",
+])
 
 SSRF_TARGETS = {
     "169.254.169.254": (
@@ -221,7 +226,7 @@ footer{margin-top:16px;text-align:center;color:var(--muted);font-size:11px}
 <body>
 <div class="wrap">
 <div class="hero">
-  <h1>Attack &amp; Defense Lab <span class="badge badge-red">Training Only</span></h1>
+  <h1>Attack &amp; Defense Lab <span class="badge badge-red">Huawei Cloud Security PoC Only - Author: Jason Gao</span></h1>
   <p class="sub">OWASP Top 10 (2021) + L3-L7 attack simulation. All sensitive files are synthetic under <code>./lab_files</code>. No real system data is read or executed.</p>
 </div>
 <div class="tabs">
@@ -509,8 +514,8 @@ footer{margin-top:16px;text-align:center;color:var(--muted);font-size:11px}
 <div class="section" id="sec-upload">
 <div class="grid">
 <div class="card"><h3>A08 &mdash; Unrestricted File Upload</h3>
-<p class="tip">Upload any file. Server checks EICAR signature for AV/EDR testing.<br>
-EICAR: <code>X5O!P%@AP[4\\PZX54(P^)7CC)7}$EICAR-STANDARD-ANTIVIRUS-TEST-FILE!$H+H*</code></p>
+<p class="tip">Upload any file. Server can detect EICAR-like test signatures for AV/EDR correlation.<br>
+For NGFW compatibility, no EICAR string is pre-rendered in this page.</p>
 <label>File</label><input id="upl-f" type="file">
 <label>Bypass extension suffix</label>
 <select id="upl-ext">
