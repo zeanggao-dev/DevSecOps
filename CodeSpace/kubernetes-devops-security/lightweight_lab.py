@@ -363,14 +363,14 @@ footer{margin-top:16px;text-align:center;color:var(--muted);font-size:11px}
 <div id="rxss-out" class="result"></div></div>
 
 <div class="card"><h3>A03 &mdash; Stored XSS (Comment Board)</h3>
-<p class="tip">Post comment; rendered via innerHTML. Try <code>&lt;script&gt;alert('stored')&lt;/script&gt;</code></p>
+<p class="tip">Post comment; rendered via innerHTML (client-side demo, no backend request). Try <code>&lt;script&gt;alert('stored')&lt;/script&gt;</code></p>
 <label>Comment</label><input id="sxss-i" value="Hello from &lt;b&gt;Bob&lt;/b&gt;">
 <button class="btn" onclick="postComment()">Post Comment</button>
 <button class="btn" style="margin-top:6px;background:var(--blue-d)" onclick="loadComments()">View Board</button>
 <div id="sxss-out" class="result"></div></div>
 
 <div class="card"><h3>A03 &mdash; DOM-Based XSS</h3>
-<p class="tip">Inject into DOM via innerHTML. Add <code>#&lt;img src=x onerror=alert('dom')&gt;</code> to URL or use input.</p>
+<p class="tip">Inject into DOM via innerHTML (client-side demo, no backend request). Add <code>#&lt;img src=x onerror=alert('dom')&gt;</code> to URL or use input.</p>
 <label>Fragment value</label><input id="dxss-i" value="&lt;img src=x onerror=alert('dom')&gt;">
 <button class="btn" onclick="domXSS()">Inject DOM</button>
 <div id="dxss-out" class="result"></div></div>
@@ -674,11 +674,27 @@ function reflectedXSS(){
   var p=g('rxss-i');
   var xhr=new XMLHttpRequest();
   xhr.open('GET','/api/xss?input='+encodeURIComponent(p),true);
+    xhr.timeout=8000;
   xhr.onreadystatechange=function(){
     if(xhr.readyState!==4) return;
-    var d; try{ d=JSON.parse(xhr.responseText); }catch(e){ d={reflected:p}; }
-    showHtml('rxss-out','<span class="warn">Reflected (unsafe innerHTML):</span>\\n'+(d.reflected||''));
+        var d=parseJsonSafe(xhr.responseText);
+        if(xhr.status===0){
+            show('rxss-out','HTTP 0\\nBlocked/reset before app response.');
+            return;
+        }
+        if(!d){
+            show('rxss-out','HTTP '+xhr.status+'\\nNon-JSON response, possibly blocked by upstream firewall.');
+            return;
+        }
+        if(d.ok!==true || !d.reflected){
+            show('rxss-out','HTTP '+xhr.status+'\\nApp blocked or invalid payload.\\n'+JSON.stringify(d,null,2));
+            return;
+        }
+        showHtml('rxss-out','<span class="warn">Reflected (unsafe innerHTML):</span>\\n'+d.reflected);
   };
+    xhr.onerror=function(){ show('rxss-out','HTTP 0\\nNetwork error: request blocked/reset.'); };
+    xhr.ontimeout=function(){ show('rxss-out','HTTP 0\\nRequest timeout: likely dropped upstream.'); };
+    xhr.onabort=function(){ show('rxss-out','HTTP 0\\nRequest aborted.'); };
   xhr.send();
 }
 function postComment(){ storedComments.push(g('sxss-i')); show('sxss-out','Stored. Click View Board to render.'); }
