@@ -642,10 +642,10 @@ function renderApiResult(outId,xhr,jsonObj){
         }
         var sn=bodyPreview(xhr.responseText);
         if(sn) lines.push('Body Preview: '+sn);
-        show(outId,lines.join('\n'));
+        show(outId,lines.join('\\n'));
         return;
     }
-    show(outId,lines.join('\n')+'\n'+JSON.stringify(jsonObj,null,2));
+    show(outId,lines.join('\\n')+'\\n'+JSON.stringify(jsonObj,null,2));
 }
 
 function api(endpoint,outId,params){
@@ -658,13 +658,13 @@ function api(endpoint,outId,params){
         renderApiResult(outId,xhr,parseJsonSafe(xhr.responseText));
   };
     xhr.onerror=function(){
-        show(outId,'HTTP 0\nNetwork error: request blocked/reset before app response.');
+        show(outId,'HTTP 0\\nNetwork error: request blocked/reset before app response.');
     };
     xhr.ontimeout=function(){
-        show(outId,'HTTP 0\nRequest timeout: upstream security device may have dropped this request.');
+        show(outId,'HTTP 0\\nRequest timeout: upstream security device may have dropped this request.');
     };
     xhr.onabort=function(){
-        show(outId,'HTTP 0\nRequest aborted before completion.');
+        show(outId,'HTTP 0\\nRequest aborted before completion.');
     };
   xhr.send();
 }
