@@ -283,20 +283,20 @@ HTML_CONTENT = """<!DOCTYPE html>
 <title>Attack &amp; Defense Lab</title>
 <style>
 :root{
-    --bg0:#04121f;--bg1:#081a2e;--bg2:#0b233c;
-    --surface:#0f1f33;--surface2:#122843;--line:#1f4668;
-    --text:#d9f4ff;--muted:#8db5c8;
-    --blue:#1aa4ff;--blue-d:#1177c9;
-    --green:#18d6b2;--red:#ff5f78;--amber:#ffc857;
-    --glow:0 0 0 1px rgba(26,164,255,.35),0 0 20px rgba(26,164,255,.15);
-    --sh:0 14px 34px rgba(0,0,0,.38);
+    --bg0:#f6fbff;--bg1:#eef7ff;--bg2:#ffffff;
+    --surface:#ffffff;--surface2:#f6fbff;--line:#cfe5f5;
+    --text:#18374d;--muted:#4a6c84;
+    --blue:#178fdf;--blue-d:#0f72bb;
+    --green:#0f9a74;--red:#d64d66;--amber:#a97800;
+    --glow:0 0 0 1px rgba(23,143,223,.18),0 8px 18px rgba(23,143,223,.09);
+    --sh:0 10px 24px rgba(14,66,104,.10);
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{
     font-family:"Trebuchet MS","Verdana","Tahoma",sans-serif;
     background:
-        radial-gradient(1200px 600px at 10% -10%,rgba(24,214,178,.14),transparent 60%),
-        radial-gradient(1000px 700px at 100% 0%,rgba(26,164,255,.22),transparent 62%),
+        radial-gradient(1200px 600px at 10% -10%,rgba(15,154,116,.08),transparent 60%),
+        radial-gradient(1000px 700px at 100% 0%,rgba(23,143,223,.12),transparent 62%),
         linear-gradient(150deg,var(--bg0) 0%,var(--bg1) 45%,var(--bg2) 100%);
     color:var(--text);
     line-height:1.5;
@@ -333,7 +333,7 @@ body:after{
 }
 .wrap{max-width:1300px;margin:0 auto;padding:20px}
 .hero{
-    background:linear-gradient(160deg,rgba(15,31,51,.95),rgba(18,40,67,.93));
+    background:linear-gradient(160deg,rgba(255,255,255,.96),rgba(244,250,255,.96));
     border:1px solid var(--line);
     border-radius:14px;
     box-shadow:var(--sh),var(--glow);
@@ -350,8 +350,9 @@ body:after{
     width:260px;
     height:260px;
     border-radius:50%;
-    background:radial-gradient(circle,rgba(26,164,255,.25),transparent 70%);
+    background:radial-gradient(circle,rgba(23,143,223,.14),transparent 72%);
 }
+.title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .status-strip{
     margin-top:10px;
     display:flex;
@@ -364,11 +365,11 @@ body:after{
     gap:6px;
     font-size:11px;
     letter-spacing:.2px;
-    color:#9fd4ea;
-    border:1px solid #275679;
+    color:#3e6884;
+    border:1px solid #b9d7ea;
     border-radius:999px;
     padding:4px 10px;
-    background:rgba(6,22,38,.6);
+    background:rgba(255,255,255,.84);
 }
 .status-dot{
     width:8px;
@@ -380,16 +381,16 @@ body:after{
 .status-dot.ok{background:#18d6b2;box-shadow:0 0 10px rgba(24,214,178,.65)}
 .status-dot.warn{background:#ffc857;box-shadow:0 0 10px rgba(255,200,87,.5)}
 .status-dot.pulse{animation:lampPulse 1.8s ease-in-out infinite}
-h1{color:#b8ecff;font-size:26px;margin-bottom:6px;letter-spacing:.3px;text-shadow:0 0 18px rgba(26,164,255,.25)}
+h1{color:#0f3f62;font-size:26px;margin-bottom:6px;letter-spacing:.3px;text-shadow:none}
 .sub{color:var(--muted);font-size:13px}
-h3{color:#9cdef8;font-size:15px;margin-bottom:8px}
+h3{color:#265f86;font-size:15px;margin-bottom:8px}
 .tabs{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:16px}
 .tab{
     padding:7px 14px;
     border:1px solid rgba(26,164,255,.55);
     border-radius:20px;
-    background:rgba(11,35,60,.72);
-    color:#8ed7ff;
+    background:#f2f8fd;
+    color:#316286;
     cursor:pointer;
     font-size:13px;
     font-weight:600;
@@ -408,16 +409,16 @@ h3{color:#9cdef8;font-size:15px;margin-bottom:8px}
 }
 .card:hover{transform:translateY(-2px);border-color:rgba(26,164,255,.65);box-shadow:var(--sh),var(--glow)}
 .tip{color:var(--muted);font-size:12px;margin-bottom:10px}
-.tip code{background:rgba(16,62,96,.55);color:#c8f2ff;padding:1px 4px;border-radius:3px;font-family:"Liberation Mono","Consolas",monospace;font-size:12px}
+.tip code{background:#e8f3fc;color:#245d82;padding:1px 4px;border-radius:3px;font-family:"Liberation Mono","Consolas",monospace;font-size:12px}
 label{display:block;font-size:12px;font-weight:600;color:#2b4152;margin:8px 0 3px}
-label{color:#7cc0dc}
+label{color:#2d6184}
 input,textarea,select{
     width:100%;
-    border:1px solid #356488;
+    border:1px solid #b9d8eb;
     border-radius:7px;
     padding:8px;
     font-size:13px;
-    background:#0a1a2d;
+    background:#ffffff;
     color:var(--text);
 }
 input:focus,textarea:focus,select:focus{outline:none;border-color:#43c7ff;box-shadow:0 0 0 2px rgba(26,164,255,.2)}
@@ -425,19 +426,19 @@ textarea{resize:vertical;min-height:60px}
 .btn{margin-top:10px;width:100%;border:none;border-radius:7px;padding:9px;color:#fff;font-weight:700;cursor:pointer;font-size:13px;background:linear-gradient(180deg,var(--blue) 0%,var(--blue-d) 100%);transition:transform .14s ease,filter .14s ease,box-shadow .14s ease}
 .btn:hover{filter:brightness(1.04);transform:translateY(-1px);box-shadow:0 0 16px rgba(26,164,255,.3)}
 .btn-sm{padding:6px 10px;width:auto;margin-top:0;font-size:12px;border-radius:6px;border:none;color:#fff;cursor:pointer;background:var(--blue-d)}
-.result{margin-top:10px;min-height:70px;border:1px solid #2a597e;border-radius:8px;background:#081a2d;padding:10px;font-size:12px;white-space:pre-wrap;overflow-wrap:break-word;font-family:"Liberation Mono","Consolas",monospace;color:#d9f4ff}
+.result{margin-top:10px;min-height:70px;border:1px solid #b8d8eb;border-radius:8px;background:#f8fcff;padding:10px;font-size:12px;white-space:pre-wrap;overflow-wrap:break-word;font-family:"Liberation Mono","Consolas",monospace;color:#18374d}
 .ok{color:var(--green);font-weight:700}
 .warn{color:var(--red);font-weight:700}
 .info{color:var(--amber);font-weight:700}
 .badge{display:inline-block;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;margin-left:6px;vertical-align:middle}
-.badge-red{background:rgba(255,95,120,.18);color:#ffb0bf;border:1px solid rgba(255,95,120,.35)}
-.log-box{background:#051525;color:#87ffd8;border:1px solid #2d5c7f;border-radius:8px;padding:12px;font-size:11px;min-height:100px;white-space:pre-wrap;font-family:"Liberation Mono","Consolas",monospace;overflow-y:auto;max-height:280px;position:relative}
-.log-box:after{content:"_";position:absolute;right:10px;bottom:8px;color:#87ffd8;opacity:.9;animation:cursorBlink 1s steps(1,end) infinite;pointer-events:none}
-.defense-viz{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:12px;padding:10px;border:1px solid #2a597e;border-radius:8px;background:#081a2d}
-.pie3d{--pct:0;position:relative;width:140px;height:140px;border-radius:50%;background:conic-gradient(#18d6b2 calc(var(--pct)*1%), #ff5f78 0);box-shadow:0 10px 18px rgba(0,0,0,.35), inset 0 2px 10px rgba(255,255,255,.1)}
-.pie3d:before{content:"";position:absolute;left:8px;right:8px;top:8px;bottom:8px;border-radius:50%;background:#071726;box-shadow:inset 0 0 0 1px rgba(31,70,104,.7)}
-.pie3d-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#b8ecff;text-shadow:0 0 10px rgba(26,164,255,.35)}
-.viz-legend{font-size:12px;line-height:1.6;color:#9fd4ea}
+.badge-red{background:rgba(214,77,102,.12);color:#9c2f45;border:1px solid rgba(214,77,102,.32)}
+.log-box{background:#f7fcff;color:#1f5d83;border:1px solid #b8d8eb;border-radius:8px;padding:12px;font-size:11px;min-height:100px;white-space:pre-wrap;font-family:"Liberation Mono","Consolas",monospace;overflow-y:auto;max-height:280px;position:relative}
+.log-box:after{content:"_";position:absolute;right:10px;bottom:8px;color:#2f7fb4;opacity:.9;animation:cursorBlink 1s steps(1,end) infinite;pointer-events:none}
+.defense-viz{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin-bottom:12px;padding:10px;border:1px solid #b8d8eb;border-radius:8px;background:#f8fcff}
+.pie3d{--pct:0;position:relative;width:140px;height:140px;border-radius:50%;background:conic-gradient(#0f9a74 calc(var(--pct)*1%), #d64d66 0);box-shadow:0 10px 18px rgba(14,66,104,.14), inset 0 2px 10px rgba(255,255,255,.45)}
+.pie3d:before{content:"";position:absolute;left:8px;right:8px;top:8px;bottom:8px;border-radius:50%;background:#ffffff;box-shadow:inset 0 0 0 1px #d2e8f6}
+.pie3d-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;color:#0f3f62;text-shadow:none}
+.viz-legend{font-size:12px;line-height:1.6;color:#316286}
 footer{margin-top:16px;text-align:center;color:var(--muted);font-size:11px}
 @keyframes gridDrift{
     0%{transform:translate3d(0,0,0)}
@@ -467,7 +468,7 @@ footer{margin-top:16px;text-align:center;color:var(--muted);font-size:11px}
 <body>
 <div class="wrap">
 <div class="hero">
-  <h1>Attack &amp; Defense Lab <span class="badge badge-red">Huawei Cloud Security PoC Only - Author: Jason Gao</span></h1>
+    <div class="title-row"><h1>Attack &amp; Defense Lab</h1><span class="badge badge-red">Huawei Cloud Security PoC Only - Author: Jason Gao</span></div>
     <p class="sub">OWASP Top 10 attack paths + L3-L7 network security simulations. All sensitive files are synthetic under <code>./lab_files</code>; no real system data is read or executed.</p>
     <div class="status-strip">
         <span class="status-pill"><span class="status-dot ok pulse"></span>LAB ONLINE</span>
